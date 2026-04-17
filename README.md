@@ -33,6 +33,21 @@ Creates symlinks:
 
 ---
 
+## TypeScript Migration (Faza 1 foundation)
+
+TypeScript foundations are now scaffolded in parallel to the existing Bash runtime.
+
+```bash
+npm install
+npm run typecheck
+npm run build
+npm run smoke
+```
+
+Current runtime behavior (`ai-review`, `--report`, `--clean`) is still driven by scripts in `bin/`.
+
+---
+
 ## Quick Start
 
 ```bash
