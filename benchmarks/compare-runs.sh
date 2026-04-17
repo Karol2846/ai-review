@@ -6,17 +6,18 @@ mkdir -p "$OUT_DIR"
 
 run_case() {
   local label="$1"
-  local extra_args="$2"
+  shift
+  local extra_args=("$@")
 
   echo "Running $label..."
-  ai-review --json --debug --metrics-out "$OUT_DIR/${label}-metrics.json" $extra_args > "$OUT_DIR/${label}-findings.json"
+  ai-review --json --debug --metrics-out "$OUT_DIR/${label}-metrics.json" "${extra_args[@]}" > "$OUT_DIR/${label}-findings.json"
 }
 
 # Baseline-style run (strict fan-out, no batching, full response)
-run_case "baseline" "--strict --batch-mode off --response-profile full"
+run_case "baseline" --strict --batch-mode off --response-profile full
 
 # Optimized default run
-run_case "optimized" "--batch-mode agent --response-profile full"
+run_case "optimized" --batch-mode agent --response-profile full
 
 AI_REVIEW_BENCH_OUT="$OUT_DIR" python3 - <<'PYEOF'
 import json, pathlib

@@ -56,6 +56,7 @@ ai-review
   │
   ├─ 2. ANALYZE  (smart routing + optional batching)
   │      Each agent receives: added/modified hunks + targeted context windows
+  │      Smart routing assigns only relevant agents by file type/change pattern
   │      Optional cache reuse by (agent, file, diff-hash, prompt-version)
   │      Returns: JSON array of findings
   │
