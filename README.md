@@ -130,7 +130,7 @@ Comment syntax per file type:
 --files <glob>     Filter changed files by glob pattern
 --report           Print terminal report (annotations are default)
 --clean            Remove all [ai-review] TODO comments
---json             Raw JSON output (for scripting / CI)
+--json             Raw JSON output only (for scripting / CI, no annotations)
 --parallel <n>     Max parallel copilot calls (default: 5)
 --debug            Show per-agent findings, timings, stderr logs
 ```
@@ -172,6 +172,7 @@ ai-review --debug --agents "architect"
 # Fail build if any critical issues found
 ai-review --json --severity critical | jq -e 'length == 0'
 ```
+
 
 ---
 
