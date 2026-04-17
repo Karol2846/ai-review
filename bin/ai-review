@@ -2,14 +2,15 @@
 set -euo pipefail
 
 # ai-review — Multi-Agent Local Code Review
-# Usage: ai-review [--annotate] [--clean] [--base <branch>] [--agents <list>]
+# Usage: ai-review [--report] [--clean] [--base <branch>] [--agents <list>]
 #        [--severity <min>] [--files <glob>] [--json]
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 AI_REVIEW_HOME="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # --- Defaults ---
-ANNOTATE=false
+ANNOTATE=true
+REPORT=false
 CLEAN=false
 JSON_OUTPUT=false
 DEBUG=false
@@ -31,7 +32,7 @@ NC='\033[0m'
 # --- Parse args ---
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --annotate)  ANNOTATE=true; shift ;;
+    --report)    REPORT=true; shift ;;
     --clean)     CLEAN=true; shift ;;
     --json)      JSON_OUTPUT=true; shift ;;
     --debug)     DEBUG=true; shift ;;
@@ -47,7 +48,7 @@ while [[ $# -gt 0 ]]; do
       echo ""
       echo "Options:"
       echo "  --base <branch>    Base branch for diff (default: auto-detect)"
-      echo "  --annotate         Insert TODO comments into source files"
+      echo "  --report           Print terminal report (annotations are default)"
       echo "  --clean            Remove previous [ai-review] TODO comments"
       echo "  --agents <list>    Comma-separated agent list (default: all)"
       echo "  --severity <min>   Minimum severity: critical, warning, info (default: info)"
@@ -202,7 +203,9 @@ echo ""
 if [[ "$JSON_OUTPUT" == "true" ]]; then
   jq '.' "$WORKDIR/findings.json"
 else
-  "$SCRIPT_DIR/report.sh" "$WORKDIR/findings.json"
+  if [[ "$REPORT" == "true" ]]; then
+    "$SCRIPT_DIR/report.sh" "$WORKDIR/findings.json"
+  fi
 
   if [[ "$ANNOTATE" == "true" ]]; then
     echo ""
