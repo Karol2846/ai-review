@@ -5,7 +5,7 @@ This folder provides a lightweight benchmark flow to compare baseline and optimi
 ## Included known-issue diff samples
 
 - `cases/01-missing-exception-handler.diff` — should trigger architect critical findings.
-- `cases/02-n-plus-one.diff` — should trigger performance warning/critical findings.
+- `cases/02-n-plus-one.diff` — should trigger performance warning findings.
 
 These diffs are fixtures for quality regression checks (category/severity drift).
 

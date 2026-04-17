@@ -28,7 +28,7 @@ ai-review --severity warning           # only warning+critical
 ai-review --json                       # raw JSON output
 ai-review --strict                     # force all selected agents on all files
 ai-review --batch-mode agent           # optional per-agent batching
-ai-review --metrics-out /tmp/metrics.json  # export run metrics
+ai-review --metrics-out /tmp/metrics.json  # export call count, prompt chars, runtime, findings
 ```
 
 ## Review Agents

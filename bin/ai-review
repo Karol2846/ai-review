@@ -230,7 +230,7 @@ if [[ -f "$ANALYZE_METRICS" ]]; then
   ANALYZE_RUNTIME=$(jq -r '.runtime_ms // 0' "$ANALYZE_METRICS")
   echo -e "${DIM}📈 Metrics: calls=$CALLS totalPromptChars=$PROMPT_TOTAL avgPromptChars=$(printf '%.0f' "$PROMPT_AVG") runtimeMs=$ANALYZE_RUNTIME findings=$TOTAL${NC}"
   if [[ -n "$METRICS_OUT" ]]; then
-    jq --argjson findings "$TOTAL" '. + {dedup_findings: $findings}' "$ANALYZE_METRICS" > "$METRICS_OUT"
+    jq --argjson findings "$TOTAL" '. + {deduplicated_findings_count: $findings, dedup_findings: $findings}' "$ANALYZE_METRICS" > "$METRICS_OUT"
     echo -e "${DIM}   metrics written to: $METRICS_OUT${NC}"
   fi
 fi

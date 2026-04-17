@@ -38,7 +38,7 @@ lines = []
 lines.append('ai-review benchmark summary')
 lines.append('')
 lines.append('metrics:')
-for key in ['copilot_calls', 'total_prompt_chars', 'avg_prompt_chars', 'runtime_ms', 'dedup_findings']:
+for key in ['copilot_calls', 'total_prompt_chars', 'avg_prompt_chars', 'runtime_ms', 'deduplicated_findings_count']:
     lines.append(f'- {key}: baseline={bm.get(key)} optimized={om.get(key)}')
 lines.append('')
 lines.append(f"severity baseline={sev_dist(bf)}")
