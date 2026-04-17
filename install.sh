@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# install.sh — Install ai-review: create symlinks for agents, skill, and CLI entry point
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+GREEN='\033[0;32m'
+CYAN='\033[0;36m'
+YELLOW='\033[0;33m'
+RED='\033[0;31m'
+BOLD='\033[1m'
+DIM='\033[2m'
+NC='\033[0m'
+
+echo -e "${BOLD}🔧 Installing ai-review...${NC}"
+echo ""
+
+# --- Check prerequisites ---
+for cmd in copilot jq git; do
+  if ! command -v "$cmd" &>/dev/null; then
+    echo -e "${RED}Error: '$cmd' is required but not found in PATH${NC}"
+    exit 1
+  fi
+done
+
+# --- Create directories ---
+mkdir -p ~/.copilot/agents
+mkdir -p ~/.copilot/skills
+mkdir -p ~/.local/bin
+
+# --- Symlink agents ---
+echo -e "${CYAN}Linking agents...${NC}"
+for agent_file in "$SCRIPT_DIR"/agents/*.agent.md; do
+  name=$(basename "$agent_file")
+  target="$HOME/.copilot/agents/$name"
+
+  if [[ -L "$target" ]]; then
+    rm "$target"
+  elif [[ -f "$target" ]]; then
+    echo -e "  ${YELLOW}⚠ Backing up existing $name → ${name}.bak${NC}"
+    mv "$target" "${target}.bak"
+  fi
+
+  ln -s "$agent_file" "$target"
+  echo -e "  ${DIM}✓ $name${NC}"
+done
+
+# --- Symlink skill ---
+echo -e "${CYAN}Linking skill...${NC}"
+SKILL_TARGET="$HOME/.copilot/skills/ai-review"
+if [[ -L "$SKILL_TARGET" ]]; then
+  rm "$SKILL_TARGET"
+elif [[ -d "$SKILL_TARGET" ]]; then
+  echo -e "  ${YELLOW}⚠ Backing up existing skill → ai-review.bak${NC}"
+  mv "$SKILL_TARGET" "${SKILL_TARGET}.bak"
+fi
+ln -s "$SCRIPT_DIR/skill" "$SKILL_TARGET"
+echo -e "  ${DIM}✓ ~/.copilot/skills/ai-review${NC}"
+
+# --- Symlink CLI entry point ---
+echo -e "${CYAN}Linking CLI...${NC}"
+CLI_TARGET="$HOME/.local/bin/ai-review"
+if [[ -L "$CLI_TARGET" ]]; then
+  rm "$CLI_TARGET"
+elif [[ -f "$CLI_TARGET" ]]; then
+  echo -e "  ${YELLOW}⚠ Backing up existing ai-review → ai-review.bak${NC}"
+  mv "$CLI_TARGET" "${CLI_TARGET}.bak"
+fi
+ln -s "$SCRIPT_DIR/bin/ai-review" "$CLI_TARGET"
+echo -e "  ${DIM}✓ ~/.local/bin/ai-review${NC}"
+
+# --- Make scripts executable ---
+chmod +x "$SCRIPT_DIR"/bin/*
+
+# --- Verify PATH ---
+if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+  echo ""
+  echo -e "${YELLOW}⚠ ~/.local/bin is not in your PATH. Add this to your shell profile:${NC}"
+  echo -e "  ${DIM}export PATH=\"\$HOME/.local/bin:\$PATH\"${NC}"
+fi
+
+echo ""
+echo -e "${GREEN}${BOLD}✅ ai-review installed successfully!${NC}"
+echo ""
+echo -e "Usage:"
+echo -e "  ${DIM}ai-review${NC}                    Review current branch"
+echo -e "  ${DIM}ai-review --annotate${NC}          Also insert TODO comments"
+echo -e "  ${DIM}ai-review --clean${NC}             Remove [ai-review] TODOs"
+echo -e "  ${DIM}ai-review --help${NC}              Show all options"
+echo ""
+echo -e "Or from Copilot CLI: ${DIM}/ai-review${NC} or ${DIM}Use the /ai-review skill${NC}"
