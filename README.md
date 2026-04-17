@@ -38,8 +38,8 @@ Creates symlinks:
 ```bash
 cd /path/to/your/repo
 
-ai-review                          # terminal report
-ai-review --annotate               # + insert TODO comments into files
+ai-review                          # insert TODO comments into files (default)
+ai-review --report                 # + print terminal report
 ai-review --clean                  # remove TODO comments
 ```
 
@@ -62,12 +62,11 @@ ai-review
   │      Merge all JSONs, deduplicate by fingerprint,
   │      filter by min severity, sort: critical → warning → info
   │
-  ├─ 4a. REPORT (default)
-  │       Colored terminal output grouped by file
+  ├─ 4a. ANNOTATE (default)
+  │       Insert TODO comments above flagged lines (bottom-up to preserve line numbers)
   │
-  └─ 4b. ANNOTATE (--annotate)
-          Insert TODO comments above flagged lines (bottom-up to preserve line numbers)
-          Cleanup: ai-review --clean
+  └─ 4b. REPORT (--report, optional)
+          Colored terminal output grouped by file
 ```
 
 ---
@@ -88,7 +87,7 @@ All agents are critical and pragmatic — they name exact classes and methods, a
 
 ## Output
 
-### Terminal report
+### Terminal report (`--report`, optional)
 ```
 ━━━ src/main/java/com/example/CreatorFacade.java ━━━
 
@@ -104,7 +103,7 @@ All agents are critical and pragmatic — they name exact classes and methods, a
 3 findings across 2 files from 3 agents
 ```
 
-### TODO annotation (`--annotate`)
+### TODO annotation (default)
 ```java
 // TODO architect critical: No @ControllerAdvice found. → Add @RestControllerAdvice. [ai-review]
 public class CreatorController {
@@ -129,9 +128,9 @@ Comment syntax per file type:
 --agents <list>    Comma-separated agents (default: all 5)
 --severity <min>   Minimum severity: critical, warning, info (default: info)
 --files <glob>     Filter changed files by glob pattern
---annotate         Insert TODO comments into source files
+--report           Print terminal report (annotations are default)
 --clean            Remove all [ai-review] TODO comments
---json             Raw JSON output (for scripting / CI)
+--json             Raw JSON output only (for scripting / CI, no annotations)
 --parallel <n>     Max parallel copilot calls (default: 5)
 --debug            Show per-agent findings, timings, stderr logs
 ```
@@ -142,9 +141,9 @@ Comment syntax per file type:
 
 ### Before pushing
 ```bash
-ai-review                          # review all changes
+ai-review                          # add TODO comments in changed files
 ai-review --severity warning       # skip info-level noise
-ai-review --annotate               # mark TODOs, fix, then:
+ai-review --report                 # optionally also show terminal report
 ai-review --clean                  # remove markers before push
 ```
 
@@ -173,6 +172,7 @@ ai-review --debug --agents "architect"
 # Fail build if any critical issues found
 ai-review --json --severity critical | jq -e 'length == 0'
 ```
+
 
 ---
 
@@ -236,4 +236,3 @@ rm ~/.copilot/skills/ai-review
 rm ~/.copilot/agents/{clean-coder,tester,architect,ddd-reviewer,performance}.agent.md
 rm -rf ~/ai-review
 ```
-

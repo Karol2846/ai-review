@@ -1,6 +1,6 @@
 ---
 name: ai-review
-description: "Orchestrates multi-agent local code review. Analyzes git diff changes using specialized reviewer agents (clean-coder, tester, architect, ddd-reviewer, performance) and produces a consolidated report or annotates files with TODO comments. Use when asked to review code, run code review, or ai-review."
+description: "Orchestrates multi-agent local code review. Analyzes git diff changes using specialized reviewer agents (clean-coder, tester, architect, ddd-reviewer, performance), annotates files with TODO comments by default, and optionally prints a terminal report."
 allowed-tools: shell, view, edit
 ---
 
@@ -13,14 +13,14 @@ When invoked, run the `ai-review` script from this skill's base directory.
 1. **Scope**: Determines changed files via `git diff` against the base branch (merge-base).
 2. **Analyze**: Runs each reviewer agent in parallel against each changed file. Each agent returns a JSON array of structured findings.
 3. **Aggregate**: Collects all findings, deduplicates by fingerprint, sorts by severity.
-4. **Output**: Either prints a terminal report (default) or annotates source files with TODO comments (`--annotate`).
+4. **Output**: Annotates source files with TODO comments by default, and optionally prints a terminal report (`--report`).
 
 ## Usage
 
 Run directly from terminal:
 ```bash
-ai-review                              # review current branch vs base
-ai-review --annotate                   # also insert TODO comments
+ai-review                              # annotate current branch vs base (default)
+ai-review --report                     # also print terminal report
 ai-review --agents "tester,ddd-reviewer"  # only specific agents
 ai-review --base develop               # compare against specific branch
 ai-review --clean                      # remove previous [ai-review] TODOs
