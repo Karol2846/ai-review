@@ -1,0 +1,18 @@
+diff --git a/src/main/java/com/example/api/UserController.java b/src/main/java/com/example/api/UserController.java
+index 1111111..2222222 100644
+--- a/src/main/java/com/example/api/UserController.java
++++ b/src/main/java/com/example/api/UserController.java
+@@ -10,6 +10,15 @@ public class UserController {
+     private final UserService userService;
+ 
++    @GetMapping("/{id}")
++    public UserDto getById(@PathVariable String id) {
++        return userService.getById(id)
++            .orElseThrow(() -> new RuntimeException("user not found"));
++    }
++
++    // Expected benchmark signal: architect/missing-exception-handler (critical)
++
+     @PostMapping
+     public UserDto create(@RequestBody CreateUserRequest request) {
+         return userService.create(request);

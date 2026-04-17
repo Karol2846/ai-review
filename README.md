@@ -54,8 +54,9 @@ ai-review
   │      git diff $(merge-base HEAD origin/main)..HEAD
   │      → list of changed files
   │
-  ├─ 2. ANALYZE  (parallel — 1 copilot call per file × agent)
-  │      Each agent receives: diff + first 300 lines of file
+  ├─ 2. ANALYZE  (smart routing + optional batching)
+  │      Each agent receives: added/modified hunks + targeted context windows
+  │      Optional cache reuse by (agent, file, diff-hash, prompt-version)
   │      Returns: JSON array of findings
   │
   ├─ 3. AGGREGATE
@@ -128,7 +129,14 @@ Comment syntax per file type:
 --base <branch>    Base branch for diff (default: auto-detect main/master)
 --agents <list>    Comma-separated agents (default: all 5)
 --severity <min>   Minimum severity: critical, warning, info (default: info)
+--strict           Disable smart routing; run all selected agents on all files
 --files <glob>     Filter changed files by glob pattern
+--batch-mode <m>   Copilot call strategy: off|agent (default: off)
+--batch-max-chars  Max prompt chars per batch in agent mode (default: 16000)
+--max-file-kb <n>  Skip files larger than n KB unless --include-large-files (default: 256)
+--include-large-files  Include large files above --max-file-kb
+--response-profile Response shaping: full|critical-warning (default: full)
+--metrics-out <p>  Write run metrics JSON to a file
 --annotate         Insert TODO comments into source files
 --clean            Remove all [ai-review] TODO comments
 --json             Raw JSON output (for scripting / CI)
@@ -166,6 +174,13 @@ ai-review --agents "tester" --files "*.java"
 ai-review --debug --agents "architect"
 # Shows: findings per agent, ms per task (parallelism confirmation), stderr errors
 # Preserves /tmp/ai-review-* workdir for inspection
+```
+
+### Benchmark token/call optimization
+```bash
+bash benchmarks/compare-runs.sh
+# baseline: strict fan-out, no batching
+# optimized: smart routing + optional batching
 ```
 
 ### CI / scripting
@@ -206,7 +221,7 @@ Each finding:
 │   └── tester.agent.md
 ├── bin/
 │   ├── ai-review          # entry point: arg parsing, git scope, orchestration
-│   ├── analyze.sh         # parallel copilot -p -s calls per (file × agent)
+│   ├── analyze.sh         # smart routing, context-window prompts, cache, optional batching
 │   ├── aggregate.sh       # jq: merge + dedup + sort findings
 │   ├── report.sh          # colored terminal output
 │   └── annotate.sh        # insert / remove TODO comments
@@ -214,6 +229,11 @@ Each finding:
 │   └── finding.schema.json
 ├── skill/
 │   └── SKILL.md           # Copilot CLI skill descriptor
+├── benchmarks/
+│   ├── compare-runs.sh
+│   └── cases/
+│       ├── 01-missing-exception-handler.diff
+│       └── 02-n-plus-one.diff
 ├── install.sh
 └── README.md
 ```
@@ -236,4 +256,3 @@ rm ~/.copilot/skills/ai-review
 rm ~/.copilot/agents/{clean-coder,tester,architect,ddd-reviewer,performance}.agent.md
 rm -rf ~/ai-review
 ```
-

@@ -1,0 +1,19 @@
+diff --git a/src/main/java/com/example/order/OrderService.java b/src/main/java/com/example/order/OrderService.java
+index 3333333..4444444 100644
+--- a/src/main/java/com/example/order/OrderService.java
++++ b/src/main/java/com/example/order/OrderService.java
+@@ -40,6 +40,17 @@ public class OrderService {
+     public List<OrderSummary> listOrderSummaries() {
++        List<Order> orders = orderRepository.findAll();
++        List<OrderSummary> result = new ArrayList<>();
++        for (Order order : orders) {
++            Customer customer = customerRepository.findById(order.getCustomerId()).orElse(null);
++            result.add(new OrderSummary(order.getId(), customer != null ? customer.getName() : "unknown"));
++        }
++        return result;
++
++        // Expected benchmark signal: performance/n-plus-one (warning or critical)
++
+         return orderRepository.findProjectedSummaries();
+     }
+ }

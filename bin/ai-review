@@ -18,6 +18,14 @@ AGENTS="clean-coder,tester,architect,ddd-reviewer,performance"
 MIN_SEVERITY="info"
 FILE_FILTER=""
 MAX_PARALLEL=5
+STRICT_MODE=false
+BATCH_MODE="off"
+BATCH_MAX_CHARS=16000
+MAX_FILE_KB=256
+INCLUDE_LARGE_FILES=false
+RESPONSE_PROFILE="full"
+METRICS_OUT=""
+SEVERITY_SET=false
 
 # --- Colors ---
 RED='\033[0;31m'
@@ -37,7 +45,14 @@ while [[ $# -gt 0 ]]; do
     --debug)     DEBUG=true; shift ;;
     --base)      BASE_BRANCH="$2"; shift 2 ;;
     --agents)    AGENTS="$2"; shift 2 ;;
-    --severity)  MIN_SEVERITY="$2"; shift 2 ;;
+    --severity)  MIN_SEVERITY="$2"; SEVERITY_SET=true; shift 2 ;;
+    --strict)    STRICT_MODE=true; shift ;;
+    --batch-mode) BATCH_MODE="$2"; shift 2 ;;
+    --batch-max-chars) BATCH_MAX_CHARS="$2"; shift 2 ;;
+    --max-file-kb) MAX_FILE_KB="$2"; shift 2 ;;
+    --include-large-files) INCLUDE_LARGE_FILES=true; shift ;;
+    --response-profile) RESPONSE_PROFILE="$2"; shift 2 ;;
+    --metrics-out) METRICS_OUT="$2"; shift 2 ;;
     --files)     FILE_FILTER="$2"; shift 2 ;;
     --parallel)  MAX_PARALLEL="$2"; shift 2 ;;
     --help|-h)
@@ -51,7 +66,14 @@ while [[ $# -gt 0 ]]; do
       echo "  --clean            Remove previous [ai-review] TODO comments"
       echo "  --agents <list>    Comma-separated agent list (default: all)"
       echo "  --severity <min>   Minimum severity: critical, warning, info (default: info)"
+      echo "  --strict           Disable smart routing; run all selected agents for each file"
       echo "  --files <glob>     Filter changed files by glob pattern"
+      echo "  --batch-mode <m>   Copilot call strategy: off|agent (default: off)"
+      echo "  --batch-max-chars  Max prompt chars per batch in agent mode (default: 16000)"
+      echo "  --max-file-kb <n>  Skip files larger than n KB unless --include-large-files (default: 256)"
+      echo "  --include-large-files  Include files above --max-file-kb limit"
+      echo "  --response-profile Response shaping: full|critical-warning (default: full)"
+      echo "  --metrics-out <p>  Write run metrics JSON to this path"
       echo "  --json             Output raw JSON findings"
       echo "  --debug            Show raw agent output and timings for debugging"
       echo "  --parallel <n>     Max parallel agent invocations (default: 5)"
@@ -61,6 +83,19 @@ while [[ $# -gt 0 ]]; do
     *) echo "Unknown option: $1"; exit 1 ;;
   esac
 done
+
+if [[ "$BATCH_MODE" != "off" && "$BATCH_MODE" != "agent" ]]; then
+  echo -e "${RED}Error: --batch-mode must be off or agent${NC}"
+  exit 1
+fi
+if [[ "$RESPONSE_PROFILE" != "full" && "$RESPONSE_PROFILE" != "critical-warning" ]]; then
+  echo -e "${RED}Error: --response-profile must be full or critical-warning${NC}"
+  exit 1
+fi
+
+if [[ "$RESPONSE_PROFILE" == "critical-warning" && "$SEVERITY_SET" == "false" ]]; then
+  MIN_SEVERITY="warning"
+fi
 
 # --- Validate we're in a git repo ---
 if ! git rev-parse --is-inside-work-tree &>/dev/null; then
@@ -141,7 +176,13 @@ echo -e "${CYAN}📋 Phase 1: Analyzing with agents: ${AGENTS}${NC}"
   "$AGENTS" \
   "$MAX_PARALLEL" \
   "$AI_REVIEW_HOME" \
-  "$DEBUG"
+  "$DEBUG" \
+  "$STRICT_MODE" \
+  "$BATCH_MODE" \
+  "$BATCH_MAX_CHARS" \
+  "$MAX_FILE_KB" \
+  "$INCLUDE_LARGE_FILES" \
+  "$RESPONSE_PROFILE"
 
 # --- Phase 2: Aggregate ---
 echo -e "${CYAN}📊 Phase 2: Aggregating findings...${NC}"
@@ -180,6 +221,19 @@ fi
 
 # --- Count findings ---
 TOTAL=$(jq 'length' "$WORKDIR/findings.json")
+ANALYZE_METRICS="$WORKDIR/metrics/analyze.json"
+
+if [[ -f "$ANALYZE_METRICS" ]]; then
+  CALLS=$(jq -r '.copilot_calls // 0' "$ANALYZE_METRICS")
+  PROMPT_TOTAL=$(jq -r '.total_prompt_chars // 0' "$ANALYZE_METRICS")
+  PROMPT_AVG=$(jq -r '.avg_prompt_chars // 0' "$ANALYZE_METRICS")
+  ANALYZE_RUNTIME=$(jq -r '.runtime_ms // 0' "$ANALYZE_METRICS")
+  echo -e "${DIM}📈 Metrics: calls=$CALLS totalPromptChars=$PROMPT_TOTAL avgPromptChars=$(printf '%.0f' "$PROMPT_AVG") runtimeMs=$ANALYZE_RUNTIME findings=$TOTAL${NC}"
+  if [[ -n "$METRICS_OUT" ]]; then
+    jq --argjson findings "$TOTAL" '. + {dedup_findings: $findings}' "$ANALYZE_METRICS" > "$METRICS_OUT"
+    echo -e "${DIM}   metrics written to: $METRICS_OUT${NC}"
+  fi
+fi
 
 if [[ "$TOTAL" -eq 0 ]]; then
   echo ""
