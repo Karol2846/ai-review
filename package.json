@@ -15,6 +15,7 @@
     "p-map": "^7.0.3"
   },
   "devDependencies": {
+    "@types/micromatch": "^4.0.10",
     "@types/node": "^22.15.3",
     "typescript": "^5.8.3"
   }
