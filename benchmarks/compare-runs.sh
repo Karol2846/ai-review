@@ -10,7 +10,7 @@ run_case() {
   local extra_args=("$@")
 
   echo "Running $label..."
-  ai-review --json --debug --metrics-out "$OUT_DIR/${label}-metrics.json" "${extra_args[@]}" > "$OUT_DIR/${label}-findings.json"
+  ai-review --json --debug --metrics-out "$OUT_DIR/${label}-metrics.json" "${extra_args[@]}" > "$OUT_DIR/${label}-findings.json" 2> "$OUT_DIR/${label}-debug.log"
 }
 
 # Baseline-style run (strict fan-out, no batching, full response)
@@ -40,7 +40,7 @@ lines.append('ai-review benchmark summary')
 lines.append('')
 lines.append('metrics:')
 for key in ['copilot_calls', 'total_prompt_chars', 'avg_prompt_chars', 'runtime_ms', 'deduplicated_findings_count']:
-    lines.append(f'- {key}: baseline={bm.get(key)} optimized={om.get(key)}')
+    lines.append(f'- {key}: baseline={bm.get(key, \"N/A\")} optimized={om.get(key, \"N/A\")}')
 lines.append('')
 lines.append(f"severity baseline={sev_dist(bf)}")
 lines.append(f"severity optimized={sev_dist(of)}")
