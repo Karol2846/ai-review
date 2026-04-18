@@ -30,45 +30,60 @@
     * Napisanie funkcji `routeFilesToAgents(changedFiles, config)`.
     * Zwrócenie przypisań w formacie `Map<AgentName, string[]>`.
 
-## Faza 3: Paczkowanie (Batching) i Prompty
-*Kluczowy krok dla oszczędności tokenów: pakowanie plików w paczki.*
+## Faza 3: Zbieranie Pełnego Kontekstu i Paczkowanie (Batching)
+*Kluczowy krok dla jakości AI: Agent musi widzieć PEŁEN kod zmienianego pliku, aby rozumieć zależności, a diff służy mu jedynie jako wskaźnik tego, co dokładnie ocenia.
+Paczkowanie jest konieczne, aby optymalizować koszty.*
 
-* **Zadanie 3.1: Algorytm paczkowania (`src/batcher.ts`)**
-    * Napisanie funkcji `createBatches(files, diffSizes, maxLinesPerBatch)`.
-    * Podział plików tak, aby jedna paczka nie przekroczyła ustalonego limitu wielkości diffa (np. 500 linii).
-* **Zadanie 3.2: Generator Promptów (`src/promptBuilder.ts`)**
-    * Napisanie funkcji łączącej instrukcję agenta z treścią przydzielonych mu diffów.
-    * Wyraźne oddzielanie plików w prompcie znacznikami (np. `=== DIFF: src/path.ts ===`).
+* **Zadanie 3.1: Ekstrakcja Kontekstu Hybrydowego (`src/contextBuilder.ts`)**
+  * Napisanie funkcji pobierającej dla każdego zmienionego pliku:
+    1. Pełną zawartość pliku z dysku (stan po zmianach).
+    2. Wyizolowany Diff dla tego konkretnego pliku (jako mapa zmian).
+* **Zadanie 3.2: Algorytm paczkowania z limitem tokenów (`src/batcher.ts`)**
+  * Napisanie funkcji `createBatches(routedFiles, maxCharLimit)`.
+  * Ponieważ wysyłamy pełne pliki, paczkowanie musi opierać się na przybliżonym rozmiarze plików (np. max 30 000 znaków na paczkę), a nie na ilości linii diffa.
+  * Zabezpieczenie przed gigantycznymi plikami (jeśli jeden plik przekracza limit, musi iść w oddzielnym prompcie).
+* **Zadanie 3.3: Generator Promptów (`src/promptBuilder.ts`)**
+  * Zbudowanie ustrukturyzowanego prompta dla paczki, wyraźnie separującego pliki.
+  * Struktura powinna wyglądać następująco:
+    1. [Instrukcja systemowa Agenta]
+    2. "Oto pliki do weryfikacji wraz z ich pełnym kontekstem i listą zmian:"
+    3. Dla każdego pliku w paczce:
+       `<file path="src/...">`
+       `<full_content>...cały plik...</full_content>`
+       `<git_diff>...tylko zmiany...</git_diff>`
+       `</file>`
 
 ## Faza 4: Orkiestracja i Agregacja
-*Zastąpienie skryptów `analyze.sh` i `aggregate.sh`.*
+*Zastąpienie skryptów `analyze.sh` i `aggregate.sh` solidnym mechanizmem w Node.js.*
 
 * **Zadanie 4.1: Asynchroniczny Runner (`src/runner.ts`)**
-    * Przekształcenie paczek na "Zadania" i uruchomienie ich przez `p-map` (z zachowaniem np. `concurrency: 5`).
-* **Zadanie 4.2: Bezpieczne parsowanie JSON**
-    * Ekstrakcja struktury JSON z surowej odpowiedzi modelu (odporność na formatowanie markdown).
+  * Przekształcenie paczek na "Zadania" i uruchomienie ich przez `p-map` (np. `concurrency: 5`, aby nie zabić rate-limitów Copilota).
+  * Dodanie retry-mechanizmu w przypadku błędów API lub timeoutów.
+* **Zadanie 4.2: Odporne parsowanie wyjścia JSON**
+  * Ekstrakcja struktury JSON z surowej odpowiedzi modelu (odporność na halucynacje, formatowanie markdown ` ```json ` lub dodatkowy tekst generowany przez model).
 * **Zadanie 4.3: Agregator w pamięci (`src/aggregator.ts`)**
-    * Zebranie odpowiedzi, wygenerowanie `fingerprint` dla deduplikacji.
-    * Posortowanie po priorytecie (critical -> warning -> info) i numerze linii.
+  * Zebranie wszystkich odpowiedzi od agentów.
+  * Wygenerowanie unikalnego `fingerprint` (plik + linia + kategoria) dla deduplikacji.
+  * Posortowanie po priorytecie (critical -> warning -> info) i numerze linii.
 
 ## Faza 5: Wyjście i CLI
 *Zastąpienie skryptu głównego `ai-review` oraz skryptów raportujących.*
 
 * **Zadanie 5.1: Parser Argumentów CLI**
-    * Wdrożenie parsera (np. `commander`) dla flag `--report`, `--clean`, `--base`, `--agents`, `--debug`.
+  * Wdrożenie parsera (np. wbudowane `util.parseArgs` w Node lub `commander`) dla flag `--report`, `--clean`, `--base`, `--agents`, `--debug`.
 * **Zadanie 5.2: Kolorowy Raport w Terminalu (`src/reporter.ts`)**
-    * Odtworzenie i ulepszenie formatowania za pomocą biblioteki `chalk`.
-* **Zadanie 5.3: Annotator (Komentarze TODO) (`src/annotator.ts`)**
-    * `applyAnnotations`: wstawianie komentarzy w plikach źródłowych z zachowaniem poprawnych prefixów zależnych od rozszerzenia.
-    * `cleanAnnotations`: skanowanie plików i usuwanie starych znaczników `[ai-review]`.
+  * Odtworzenie i ulepszenie czytelności formatowania (użycie `chalk` do kolorowania severity).
+* **Zadanie 5.3: Annotator (Komentarze TODO w kodzie) (`src/annotator.ts`)**
+  * `applyAnnotations`: inteligentne wstawianie komentarzy nad odpowiednią linią z zachowaniem właściwych prefixów (np. `//` dla TS/Java, `#` dla YAML).
+  * `cleanAnnotations`: regexowe skanowanie plików i usuwanie starych znaczników `[ai-review]`.
 
-## Faza 6: Integracja i Sprzątanie
-*Końcowe poprawki ułatwiające dystrybucję.*
+## Faza 6: Integracja i CLI
+*Końcowe poprawki ułatwiające dystrybucję i odcięcie się od Basha.*
 
-* **Zadanie 6.1: Składanie flow w `src/index.ts`**
-    * Połączenie wszystkich modułów: Parse Args -> Git Diff -> Router -> Batcher -> Runner -> Aggregator -> Output.
-* **Zadanie 6.2: Budowanie i instalacja**
-    * Dodanie skryptu w `package.json` kompilującego projekt do pojedynczego pliku wykonywalnego (np. używając `esbuild`).
-    * Aktualizacja instalatora instalującego wersję TS.
-* **Zadanie 6.3: Sprzątanie starych plików**
-    * Usunięcie katalogu `bin/` wraz ze starymi skryptami Bash.
+* **Zadanie 6.1: Składanie głównego Pipeline (`src/index.ts`)**
+  * Integracja: Parse Args ➔ Git Diff ➔ Router (Heurystyki) ➔ Context & Batcher ➔ Runner ➔ Aggregator ➔ Annotator/Reporter.
+* **Zadanie 6.2: Budowanie (Build Step)**
+  * Skonfigurowanie bundlera (np. `esbuild` lub po prostu kompilacja `tsc`), aby aplikacja działała jako szybki skrypt CLI (z dodaniem `#!/usr/bin/env node`).
+* **Zadanie 6.3: Sprzątanie repozytorium**
+  * Usunięcie katalogu `bin/` wraz ze starymi skryptami Bash.
+  * Aktualizacja `install.sh` / `README.md`, aby odzwierciedlały użycie Node.js.
