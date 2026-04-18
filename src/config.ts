@@ -4,7 +4,6 @@ import micromatch from "micromatch";
 
 import { defaultRoutingConfig } from "./defaultConfig";
 import {
-  AGENT_NAMES,
   type AgentGlobsMap,
   type AgentName,
   type RoutingRuntimeConfig,
@@ -30,11 +29,14 @@ function formatErrorDetail(error: unknown): string {
   return "Unknown error.";
 }
 
-function cloneAgentGlobs(agentGlobs: AgentGlobsMap): AgentGlobsMap {
-  const cloned = {} as Record<AgentName, readonly string[]>;
+function createAgentGlobsRecord(): Record<string, readonly string[]> {
+  return Object.create(null) as Record<string, readonly string[]>;
+}
 
-  for (const agent of AGENT_NAMES) {
-    cloned[agent] = [...agentGlobs[agent]];
+function cloneAgentGlobs(agentGlobs: AgentGlobsMap): AgentGlobsMap {
+  const cloned = createAgentGlobsRecord();
+  for (const [agentName, patterns] of Object.entries(agentGlobs)) {
+    cloned[agentName] = [...patterns];
   }
 
   return cloned;
@@ -47,63 +49,89 @@ function cloneRuntimeConfig(config: RoutingRuntimeConfig): RoutingRuntimeConfig 
   };
 }
 
-function validateUserConfig(value: unknown, configPath: string): string[] {
+interface ParseUserConfigResult {
+  readonly override: UserRoutingConfigOverride;
+  readonly warnings: string[];
+}
+
+function parseUserConfig(value: unknown, configPath: string): ParseUserConfigResult {
+  const override: { agentGlobs?: Partial<Record<AgentName, readonly string[]>> } = {};
+
   if (!isPlainObject(value)) {
-    return [`Invalid config in ${configPath}: root must be a JSON object.`];
+    return {
+      override,
+      warnings: [`Invalid config in ${configPath}: root must be a JSON object.`],
+    };
   }
 
   const warnings: string[] = [];
   const allowedRootKeys = new Set(["agentGlobs"]);
+  const parsedAgentGlobs = createAgentGlobsRecord();
 
   for (const key of Object.keys(value)) {
     if (!allowedRootKeys.has(key)) {
-      warnings.push(`Invalid config in ${configPath}: unsupported root key "${key}".`);
+      warnings.push(`Invalid config in ${configPath}: unsupported root key "${key}" at "${key}".`);
     }
   }
 
   if (!("agentGlobs" in value)) {
-    return warnings;
+    return { override, warnings };
   }
 
   const { agentGlobs } = value;
   if (!isPlainObject(agentGlobs)) {
     warnings.push(`Invalid config in ${configPath}: "agentGlobs" must be an object.`);
-    return warnings;
+    return { override, warnings };
   }
 
-  const supportedAgents = new Set<string>(AGENT_NAMES);
   for (const [agentName, patterns] of Object.entries(agentGlobs)) {
-    if (!supportedAgents.has(agentName)) {
-      warnings.push(`Invalid config in ${configPath}: unsupported agent "${agentName}".`);
-      continue;
-    }
-
+    const agentPath = `agentGlobs.${agentName}`;
     if (!Array.isArray(patterns)) {
       warnings.push(
-        `Invalid config in ${configPath}: "agentGlobs.${agentName}" must be an array of non-empty strings.`
+        `Invalid config in ${configPath}: "${agentPath}" must be an array of non-empty glob strings.`
       );
       continue;
     }
 
-    patterns.forEach((pattern, index) => {
+    if (patterns.length === 0) {
+      parsedAgentGlobs[agentName] = [];
+      continue;
+    }
+
+    const validPatterns: string[] = [];
+    for (const [index, pattern] of patterns.entries()) {
+      const patternPath = `${agentPath}[${index}]`;
       if (typeof pattern !== "string" || pattern.trim().length === 0) {
         warnings.push(
-          `Invalid config in ${configPath}: "agentGlobs.${agentName}[${index}]" must be a non-empty string.`
+          `Invalid config in ${configPath}: "${patternPath}" must be a non-empty string.`
         );
-        return;
+        continue;
       }
 
+      const trimmedPattern = pattern.trim();
       try {
-        micromatch.makeRe(pattern.trim());
+        micromatch.makeRe(trimmedPattern);
+        validPatterns.push(trimmedPattern);
       } catch {
         warnings.push(
-          `Invalid config in ${configPath}: "agentGlobs.${agentName}[${index}]" must be a valid glob pattern.`
+          `Invalid config in ${configPath}: "${patternPath}" must be a valid glob pattern.`
         );
       }
-    });
+    }
+
+    if (validPatterns.length > 0) {
+      parsedAgentGlobs[agentName] = validPatterns;
+    }
   }
 
-  return warnings;
+  if (Object.keys(parsedAgentGlobs).length > 0) {
+    override.agentGlobs = parsedAgentGlobs as Partial<Record<AgentName, readonly string[]>>;
+  }
+
+  return {
+    override: override as UserRoutingConfigOverride,
+    warnings,
+  };
 }
 
 function mergeOverrideConfig(
@@ -113,11 +141,12 @@ function mergeOverrideConfig(
   const mergedAgentGlobs = cloneAgentGlobs(baseConfig.agentGlobs);
 
   if (userConfig.agentGlobs) {
-    for (const agent of AGENT_NAMES) {
-      const overridePatterns = userConfig.agentGlobs[agent];
-      if (overridePatterns) {
-        mergedAgentGlobs[agent] = overridePatterns.map((pattern) => pattern.trim());
+    for (const [agentName, overridePatterns] of Object.entries(userConfig.agentGlobs)) {
+      if (!overridePatterns) {
+        continue;
       }
+
+      mergedAgentGlobs[agentName as AgentName] = overridePatterns.map((pattern) => pattern.trim());
     }
   }
 
@@ -155,16 +184,10 @@ export function loadRoutingConfig(repoRootPath: string): LoadRoutingConfigResult
     };
   }
 
-  const validationWarnings = validateUserConfig(parsedConfig, configPath);
-  if (validationWarnings.length > 0) {
-    return {
-      config: defaultConfig,
-      warnings: validationWarnings,
-    };
-  }
+  const { override, warnings } = parseUserConfig(parsedConfig, configPath);
 
   return {
-    config: mergeOverrideConfig(defaultConfig, parsedConfig as UserRoutingConfigOverride),
-    warnings: [],
+    config: mergeOverrideConfig(defaultConfig, override),
+    warnings,
   };
 }

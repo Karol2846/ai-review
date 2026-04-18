@@ -6,9 +6,9 @@ export const AGENT_NAMES = [
   "performance",
 ] as const;
 
-export type AgentName = (typeof AGENT_NAMES)[number];
+export type AgentName = string;
 
-export type AgentGlobsMap = Record<AgentName, readonly string[]>;
+export type AgentGlobsMap = Record<string, readonly string[]>;
 
 export type UnmatchedFilesPolicy = "skip";
 export type UserConfigMergeMode = "override";
@@ -21,7 +21,7 @@ export interface RoutingRuntimeConfig {
   readonly invalidUserConfigPolicy: InvalidUserConfigPolicy;
 }
 
-export type UserAgentGlobsOverride = Partial<Record<AgentName, readonly string[]>>;
+export type UserAgentGlobsOverride = Partial<AgentGlobsMap>;
 
 export interface UserRoutingConfigOverride {
   readonly agentGlobs?: UserAgentGlobsOverride;

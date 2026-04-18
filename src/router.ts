@@ -10,13 +10,24 @@ function toDeterministicUniqueList(files: readonly string[]): string[] {
   return [...new Set(files)].sort();
 }
 
+function toDeterministicAgentList(config: RoutingRuntimeConfig): AgentName[] {
+  const configuredAgents = Object.keys(config.agentGlobs);
+  const configuredAgentSet = new Set(configuredAgents);
+  const defaultAgentsInOrder = AGENT_NAMES.filter((agent) => configuredAgentSet.has(agent));
+  const defaultAgentSet = new Set<string>(defaultAgentsInOrder);
+  const dynamicAgents = configuredAgents.filter((agent) => !defaultAgentSet.has(agent)).sort();
+
+  return [...defaultAgentsInOrder, ...dynamicAgents];
+}
+
 export function routeFilesToAgents(
   changedFiles: readonly string[],
   config: RoutingRuntimeConfig
 ): Map<AgentName, string[]> {
+  const agentNames = toDeterministicAgentList(config);
   const filesByAgent = new Map<AgentName, Set<string>>();
 
-  for (const agent of AGENT_NAMES) {
+  for (const agent of agentNames) {
     filesByAgent.set(agent, new Set<string>());
   }
 
@@ -24,8 +35,9 @@ export function routeFilesToAgents(
     const matchPath = normalizeForGlob(file);
     let matched = false;
 
-    for (const agent of AGENT_NAMES) {
-      if (micromatch.isMatch(matchPath, config.agentGlobs[agent])) {
+    for (const agent of agentNames) {
+      const patterns = config.agentGlobs[agent];
+      if (patterns && micromatch.isMatch(matchPath, patterns)) {
         const bucket = filesByAgent.get(agent);
         if (bucket) {
           bucket.add(file);
@@ -40,8 +52,8 @@ export function routeFilesToAgents(
   }
 
   const routed = new Map<AgentName, string[]>();
-  for (const agent of AGENT_NAMES) {
-    routed.set(agent, [...(filesByAgent.get(agent) ?? [])]);
+  for (const agent of agentNames) {
+    routed.set(agent, toDeterministicUniqueList([...(filesByAgent.get(agent) ?? [])]));
   }
 
   return routed;
