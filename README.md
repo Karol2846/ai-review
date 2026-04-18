@@ -41,8 +41,10 @@ TypeScript foundations are now scaffolded in parallel to the existing Bash runti
 npm install
 npm run typecheck
 npm run build
-npm run smoke
+npm run test
 ```
+
+`npm run test` runs the Vitest suite from `test/` (kept outside production build output).
 
 Current runtime behavior (`ai-review`, `--report`, `--clean`) is still driven by scripts in `bin/`.
 

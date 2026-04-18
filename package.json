@@ -6,7 +6,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "smoke": "npm run build && node dist/smoke.js"
+    "test": "vitest run test"
   },
   "dependencies": {
     "chalk": "^5.4.1",
@@ -17,6 +17,7 @@
   "devDependencies": {
     "@types/micromatch": "^4.0.10",
     "@types/node": "^22.15.3",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.4"
   }
 }
