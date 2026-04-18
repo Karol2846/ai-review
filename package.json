@@ -6,8 +6,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run test",
-    "smoke": "vitest run test/review-pipeline.smoke.test.ts"
+    "test": "vitest run test"
   },
   "dependencies": {
     "chalk": "^5.4.1",

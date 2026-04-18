@@ -42,11 +42,9 @@ npm install
 npm run typecheck
 npm run build
 npm run test
-npm run smoke
 ```
 
 `npm run test` runs the Vitest suite from `test/` (kept outside production build output).
-`npm run smoke` runs deterministic integration smoke coverage for the orchestrated TS pipeline.
 
 Current runtime behavior (`ai-review`, `--report`, `--clean`) is still driven by scripts in `bin/`.
 
