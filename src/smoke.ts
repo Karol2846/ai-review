@@ -4,8 +4,11 @@ import { join } from "node:path";
 
 import { CopilotServiceError, runCopilotPrompt } from "./copilot";
 import { loadRoutingConfig } from "./config";
+import { createBatches, type FileContext } from "./batcher";
+import { buildFileContexts } from "./contextBuilder";
 import { defaultRoutingConfig } from "./defaultConfig";
 import { getChangedFiles, getFileDiff } from "./git";
+import { buildAgentBatchPrompt } from "./promptBuilder";
 import { routeFilesToAgents } from "./router";
 import { AGENT_NAMES, type RoutingRuntimeConfig } from "./routingTypes";
 
@@ -176,6 +179,78 @@ async function runSmokeChecks(): Promise<void> {
       configDrivenRouted.get("performance"),
       ["src/perf/query.sql"],
       "Invalid fragment should only affect that fragment, not valid performance patterns"
+    );
+
+    const contextBuilderProbe = await buildFileContexts(process.cwd(), "HEAD");
+    assert.ok(
+      Array.isArray(contextBuilderProbe.contexts),
+      "buildFileContexts should return a contexts array"
+    );
+    assert.ok(
+      Array.isArray(contextBuilderProbe.warnings),
+      "buildFileContexts should return a warnings array"
+    );
+
+    const batchContextByFile: Record<string, FileContext> = {
+      "src/architect/BigService.ts": {
+        fullContent:
+          "### collision marker\n" +
+          "const payload = 'x';\n".repeat(80),
+        gitDiff:
+          "@@ -1,3 +1,3 @@\n" +
+          "+const changed = true;\n".repeat(20),
+      },
+      "src/tests/feature.spec.ts": {
+        fullContent: "describe('feature', () => {})\n".repeat(20),
+        gitDiff: "@@ -0,0 +1,3 @@\n+it('works', () => {})\n",
+      },
+      "docs/guide.md": {
+        fullContent: "# Guide\n".repeat(40),
+        gitDiff: "@@ -1,2 +1,3 @@\n+updated docs\n",
+      },
+    };
+
+    const routedForBatching = new Map<string, readonly string[]>([
+      ["architect", ["src/architect/BigService.ts", "src/tests/feature.spec.ts"]],
+      ["z-custom", ["docs/guide.md"]],
+    ]);
+
+    const batched = createBatches(routedForBatching, batchContextByFile, 700);
+    assert.ok(batched.batches.length > 0, "createBatches should produce at least one batch");
+    for (const batch of batched.batches) {
+      assert.equal(batch.estimatedChars <= 700, true, "Batch estimated chars must respect maxCharLimit");
+    }
+    const architectBatches = batched.batchesByAgent.get("architect") ?? [];
+    const architectChunks = architectBatches.flatMap((batch) => batch.chunks);
+    const bigServiceChunks = architectChunks.filter(
+      (chunk) => chunk.filePath === "src/architect/BigService.ts"
+    );
+    assert.equal(
+      bigServiceChunks.some((chunk) => chunk.totalChunks > 1),
+      true,
+      "Oversized entries should be chunked into multiple deterministic chunks"
+    );
+
+    const batchedSecondRun = createBatches(routedForBatching, batchContextByFile, 700);
+    assert.deepEqual(
+      batched.batches.map((batch) => batch.id),
+      batchedSecondRun.batches.map((batch) => batch.id),
+      "Batch IDs should be deterministic for identical input"
+    );
+
+    const prompt = buildAgentBatchPrompt({
+      agentInstruction: "Review architecture and return strict findings.",
+      batch: batched.batches[0],
+    });
+    assert.equal(prompt.includes("### AGENT_INSTRUCTION"), true);
+    assert.equal(prompt.includes("### FILE"), true);
+    assert.equal(prompt.includes("### FULL_CONTENT"), true);
+    assert.equal(prompt.includes("### GIT_DIFF"), true);
+    assert.equal(prompt.includes("### OUTPUT_REQUIREMENTS"), true);
+    assert.equal(
+      prompt.includes("##\\# collision marker"),
+      true,
+      "Delimiter collisions should be sanitized deterministically"
     );
 
     const changed = await getChangedFiles("HEAD");
