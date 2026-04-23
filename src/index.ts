@@ -10,6 +10,9 @@ export { parseModelResponse } from "./responseParser";
 export { runAgentBatches } from "./runner";
 export { aggregateFindings, buildFindingFingerprint, isFindingSeverity } from "./aggregator";
 export { runReviewPipeline } from "./reviewPipeline";
+export { formatCliUsage, parseCliArgs, CliArgsError } from "./cliArgs";
+export { renderReport } from "./reporter";
+export { applyAnnotations, cleanAnnotations, AnnotatorError } from "./annotator";
 export { AGENT_NAMES } from "./routingTypes";
 export type {
   AggregatedFinding,
@@ -63,3 +66,10 @@ export type {
   RunReviewPipelineInput,
   RunReviewPipelineResult,
 } from "./reviewPipeline";
+export type { CliOptions } from "./cliArgs";
+export type { ReporterFinding, RenderReportOptions } from "./reporter";
+export type {
+  AnnotationFinding,
+  ApplyAnnotationsResult,
+  CleanAnnotationsResult,
+} from "./annotator";

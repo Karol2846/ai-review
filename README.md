@@ -33,9 +33,9 @@ Creates symlinks:
 
 ---
 
-## TypeScript Migration (Faza 1 foundation)
+## TypeScript Migration (Fazy 1-5 gotowe, runtime switch w Fazie 6)
 
-TypeScript foundations are now scaffolded in parallel to the existing Bash runtime.
+TypeScript layers for Git/Copilot services, routing, context+batching, orchestration+aggregation, and CLI output modules are now implemented in `src/`.
 
 ```bash
 npm install
@@ -46,7 +46,7 @@ npm run test
 
 `npm run test` runs the Vitest suite from `test/` (kept outside production build output).
 
-Current runtime behavior (`ai-review`, `--report`, `--clean`) is still driven by scripts in `bin/`.
+Current runtime behavior (`ai-review`, `--report`, `--clean`) is still driven by scripts in `bin/`; the final runtime switch to TypeScript is planned for Phase 6.
 
 ---
 
