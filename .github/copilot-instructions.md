@@ -2,11 +2,14 @@
 
 ## Build, test, and lint commands
 
-This repository does **not** define a separate build/lint/test pipeline (no `package.json`, `Makefile`, Gradle/Maven, or test runner config in-repo). Use the CLI itself as the executable workflow.
+This repository uses a TypeScript/Node runtime with npm scripts for build, typecheck, and tests.
 
 | Goal                                                       | Command                                                                                 |
 |------------------------------------------------------------|-----------------------------------------------------------------------------------------|
-| Install locally (symlinks CLI, agents, and skill)          | `bash install.sh`                                                                       |
+| Install locally (builds CLI + symlinks CLI, agents, skill) | `bash install.sh`                                                                      |
+| Type-check TS runtime                                      | `npm run typecheck`                                                                     |
+| Build runtime                                               | `npm run build`                                                                         |
+| Run tests                                                   | `npm run test`                                                                          |
 | Full run on current branch diff                            | `ai-review`                                                                             |
 | Full run + terminal report                                 | `ai-review --report`                                                                    |
 | Raw JSON output (for scripting/CI)                         | `ai-review --json`                                                                      |
@@ -15,23 +18,21 @@ This repository does **not** define a separate build/lint/test pipeline (no `pac
 
 ## High-level architecture
 
-`ai-review` is a Bash-orchestrated, multi-agent diff reviewer with four phases:
+`ai-review` is a TypeScript/Node multi-agent diff reviewer with four phases:
 
-1. **Scope/orchestration (`bin/ai-review`)**
+1. **Scope/orchestration (`src/cli.ts`, `src/git.ts`)**
    - Resolves repo root, base branch (`origin/HEAD` or fallback `main`/`master`), merge-base, and changed files.
-   - Creates a temp workdir and runs analyze → aggregate → output.
-2. **Per-file/per-agent analysis (`bin/analyze.sh`)**
-   - Builds one task per `(changed file × selected agent)`.
-   - For each task, loads agent instructions from `agents/*.agent.md`, sends diff + first 300 lines of current file to `copilot -p -s`, and stores JSON results.
-   - Uses GNU `parallel` when available, otherwise `xargs -P`.
-3. **Aggregation (`bin/aggregate.sh`)**
-   - Merges all raw JSON arrays, applies min-severity filtering, deduplicates via fingerprint logic, and sorts by severity/file/line.
-4. **Output (`bin/report.sh`, `bin/annotate.sh`)**
+2. **Per-file/per-agent analysis (`src/reviewPipeline.ts`, `src/runner.ts`)**
+   - Builds one task per `(changed file × selected agent)` based on routing config.
+   - Loads agent instructions from `agents/*.agent.md`, sends diff + bounded file context to Copilot, and parses JSON findings.
+3. **Aggregation (`src/aggregator.ts`)**
+   - Applies min-severity filtering, deduplicates via fingerprint logic, and sorts by severity/file/line.
+4. **Output (`src/reporter.ts`, `src/annotator.ts`)**
    - `--report`: colored grouped terminal output.
    - Default mode: injects TODO comments into source files; `--clean` removes prior `[ai-review]` markers.
 
 Install/integration surface:
-- `install.sh` symlinks `bin/ai-review` to `~/.local/bin/ai-review`, `agents/*.agent.md` to `~/.copilot/agents/`, and `skill/` to `~/.copilot/skills/ai-review`.
+- `install.sh` builds `dist/cli.js`, symlinks it to `~/.local/bin/ai-review`, and symlinks `agents/*.agent.md` plus `skill/` into Copilot directories.
 - `skill/SKILL.md` defines `/ai-review` skill behavior for Copilot CLI.
 
 ## Key conventions in this codebase
@@ -49,5 +50,5 @@ Install/integration surface:
    - Insertions happen bottom-up by line number to preserve target locations.
 5. **Diff-first review model**
    - Review scope is always changed files between `merge-base(origin/<base>, HEAD)` and `HEAD`, not whole-repo scanning.
-6. **Shell implementation assumes Unix-like tooling**
-   - Scripts rely on Bash + common Unix utilities (`jq`, `git`, `python3`, optional GNU `parallel`) and temporary dirs under `/tmp`.
+6. **Node runtime + shell integration**
+   - Runtime logic is in TypeScript modules under `src/`; shell usage is limited to installation and external tool execution (`git`, `copilot`) via Node.

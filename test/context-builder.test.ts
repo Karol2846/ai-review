@@ -38,6 +38,30 @@ beforeEach(() => {
 });
 
 describe("buildFileContexts", () => {
+  it("uses explicitly provided changed files instead of querying git", async () => {
+    const fixtureRoot = recreateFixtureDir("explicit-file-list");
+    const filePath = "src/feature.ts";
+    const fullContent = "export const value = 3;\n";
+    const gitDiff = "@@ -1 +1 @@\n-export const value = 2;\n+export const value = 3;\n";
+
+    mkdirSync(join(fixtureRoot, "src"), { recursive: true });
+    writeFileSync(join(fixtureRoot, filePath), fullContent, "utf8");
+
+    mockedGetFileDiff.mockResolvedValue(gitDiff);
+
+    const result = await buildFileContexts(fixtureRoot, "base-sha", [filePath]);
+
+    expect(mockedGetChangedFiles).not.toHaveBeenCalled();
+    expect(result.warnings).toEqual([]);
+    expect(result.contexts).toEqual([
+      {
+        filePath,
+        fullContent,
+        gitDiff,
+      },
+    ]);
+  });
+
   it("emits warning for unsupported file extensions", async () => {
     const fixtureRoot = recreateFixtureDir("unsupported-extension");
     mockedGetChangedFiles.mockResolvedValue(["assets/logo.png"]);

@@ -87,9 +87,12 @@ function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
 
 export async function buildFileContexts(
   repoRootPath: string,
-  mergeBase: string
+  mergeBase: string,
+  changedFilesInput?: readonly string[]
 ): Promise<BuildFileContextsResult> {
-  const changedFiles = toDeterministicFileList(await getChangedFiles(mergeBase));
+  const changedFiles = changedFilesInput
+    ? toDeterministicFileList(changedFilesInput)
+    : toDeterministicFileList(await getChangedFiles(mergeBase));
   const contexts: FileContextItem[] = [];
   const warnings: ContextBuilderWarning[] = [];
 

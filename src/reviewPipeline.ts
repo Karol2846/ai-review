@@ -32,6 +32,7 @@ import {
 export interface RunReviewPipelineInput {
   readonly repoRootPath: string;
   readonly mergeBase: string;
+  readonly changedFiles?: readonly string[];
   readonly routingConfig: RoutingRuntimeConfig;
   readonly agentInstructions: AgentInstructionsByAgent;
   readonly maxCharLimit: number;
@@ -174,7 +175,11 @@ function mapParserWarnings(parsedBatches: readonly ParsedBatchFindings[]): Revie
 export async function runReviewPipeline(
   input: RunReviewPipelineInput
 ): Promise<RunReviewPipelineResult> {
-  const contextResult = await buildFileContexts(input.repoRootPath, input.mergeBase);
+  const contextResult = await buildFileContexts(
+    input.repoRootPath,
+    input.mergeBase,
+    input.changedFiles
+  );
   const contextFilePaths = contextResult.contexts.map((context) => context.filePath);
 
   const routedFilesByAgent = routeFilesToAgents(contextFilePaths, input.routingConfig);

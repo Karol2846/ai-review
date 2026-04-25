@@ -1,18 +1,18 @@
 ---
 name: ai-review
-description: "Orchestrates multi-agent local code review. Analyzes git diff changes using specialized reviewer agents (clean-coder, tester, architect, ddd-reviewer, performance), annotates files with TODO comments by default, and optionally prints a terminal report."
+description: "Runs the TypeScript/Node ai-review CLI to analyze git diff changes using specialized reviewer agents (clean-coder, tester, architect, ddd-reviewer, performance), annotate files with TODO comments by default, and optionally print a terminal report."
 allowed-tools: shell, view, edit
 ---
 
 # ai-review — Multi-Agent Code Review Skill
 
-When invoked, run the `ai-review` script from this skill's base directory.
+When invoked, run `ai-review` from PATH. If unavailable, run `node dist/cli.js` from this repository root.
 
 ## How It Works
 
 1. **Scope**: Determines changed files via `git diff` against the base branch (merge-base).
-2. **Analyze**: Runs each reviewer agent in parallel against each changed file. Each agent returns a JSON array of structured findings.
-3. **Aggregate**: Collects all findings, deduplicates by fingerprint, sorts by severity.
+2. **Analyze**: Routes files to selected agents and runs parallel Copilot prompts in the Node runtime.
+3. **Aggregate**: Collects findings, applies severity filtering, deduplicates by fingerprint, and sorts.
 4. **Output**: Annotates source files with TODO comments by default, and optionally prints a terminal report (`--report`).
 
 ## Usage

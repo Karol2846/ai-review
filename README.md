@@ -10,10 +10,9 @@ Run **before creating a PR** (or when reviewing someone else's branch) to get fo
 | Tool                           | Required | Notes                                         |
 |--------------------------------|----------|-----------------------------------------------|
 | `copilot` (GitHub Copilot CLI) | ✅        | Must be logged in (`/login`)                 |
-| `jq`                           | ✅        | JSON processing                              |
-| `python3`                      | ✅        | JSON extraction + auth token resolution      |
 | `git`                          | ✅        | Diff computation                             |
-| `parallel` (GNU)               | optional | Faster than `xargs`; falls back automatically |
+| `node`                         | ✅        | Runtime for the CLI                          |
+| `npm`                          | ✅        | Build/install workflow                       |
 
 ---
 
@@ -24,8 +23,10 @@ cd ~/ai-review
 bash install.sh
 ```
 
+`install.sh` installs npm dependencies, builds the TypeScript CLI, then creates symlinks:
+
 Creates symlinks:
-- `~/.local/bin/ai-review` → CLI entry point
+- `~/.local/bin/ai-review` → `dist/cli.js` CLI entry point
 - `~/.copilot/agents/*.agent.md` → agent personas
 - `~/.copilot/skills/ai-review/` → Copilot skill
 
@@ -33,9 +34,12 @@ Creates symlinks:
 
 ---
 
-## TypeScript Migration (Fazy 1-5 gotowe, runtime switch w Fazie 6)
+## Runtime (Phase 6 complete)
 
-TypeScript layers for Git/Copilot services, routing, context+batching, orchestration+aggregation, and CLI output modules are now implemented in `src/`.
+The runtime now uses the TypeScript/Node CLI:
+- source entrypoint: `src/cli.ts`
+- package CLI entrypoint: `dist/cli.js` (`package.json#bin.ai-review`)
+- orchestration/reporting/annotation logic lives in `src/` modules
 
 ```bash
 npm install
@@ -45,8 +49,6 @@ npm run test
 ```
 
 `npm run test` runs the Vitest suite from `test/` (kept outside production build output).
-
-Current runtime behavior (`ai-review`, `--report`, `--clean`) is still driven by scripts in `bin/`; the final runtime switch to TypeScript is planned for Phase 6.
 
 ---
 
@@ -68,20 +70,20 @@ ai-review --clean                  # remove TODO comments
 ai-review
   │
   ├─ 1. SCOPE
-  │      git diff $(merge-base HEAD origin/main)..HEAD
-  │      → list of changed files
-  │
-  ├─ 2. ANALYZE  (parallel — 1 copilot call per file × agent)
-  │      Each agent receives: diff + first 300 lines of file
-  │      Returns: JSON array of findings
-  │
+   │      git diff $(merge-base HEAD origin/main)..HEAD
+   │      → list of changed files
+   │
+  ├─ 2. ANALYZE  (parallel batched calls per file × agent)
+   │      Each agent receives: diff + bounded file context
+   │      Returns: JSON array of findings
+   │
   ├─ 3. AGGREGATE
-  │      Merge all JSONs, deduplicate by fingerprint,
-  │      filter by min severity, sort: critical → warning → info
-  │
+   │      Merge all JSONs, deduplicate by fingerprint,
+   │      filter by min severity, sort: critical → warning → info
+   │
   ├─ 4a. ANNOTATE (default)
-  │       Insert TODO comments above flagged lines (bottom-up to preserve line numbers)
-  │
+   │       Insert TODO comments above flagged lines (bottom-up to preserve line numbers)
+   │
   └─ 4b. REPORT (--report, optional)
           Colored terminal output grouped by file
 ```
@@ -180,8 +182,7 @@ ai-review --agents "tester" --files "*.java"
 ### Debug when something seems wrong
 ```bash
 ai-review --debug --agents "architect"
-# Shows: findings per agent, ms per task (parallelism confirmation), stderr errors
-# Preserves /tmp/ai-review-* workdir for inspection
+# Shows parser/pipeline warnings and annotation stats on stderr
 ```
 
 ### CI / scripting
@@ -221,16 +222,18 @@ Each finding:
 │   ├── ddd-reviewer.agent.md
 │   ├── performance.agent.md
 │   └── tester.agent.md
-├── bin/
-│   ├── ai-review          # entry point: arg parsing, git scope, orchestration
-│   ├── analyze.sh         # parallel copilot -p -s calls per (file × agent)
-│   ├── aggregate.sh       # jq: merge + dedup + sort findings
-│   ├── report.sh          # colored terminal output
-│   └── annotate.sh        # insert / remove TODO comments
+├── src/
+│   ├── cli.ts             # CLI runtime entrypoint + orchestration
+│   ├── reviewPipeline.ts  # analyze + aggregate pipeline
+│   ├── aggregator.ts      # dedup + severity filtering + sorting
+│   ├── reporter.ts        # colored terminal report rendering
+│   └── annotator.ts       # insert / remove TODO comments
+├── dist/                  # compiled JS + d.ts (npm/CLI runtime)
 ├── schemas/
 │   └── finding.schema.json
 ├── skill/
 │   └── SKILL.md           # Copilot CLI skill descriptor
+├── package.json
 ├── install.sh
 └── README.md
 ```
