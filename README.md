@@ -12,25 +12,34 @@ Run **before creating a PR** (or when reviewing someone else's branch) to get fo
 | `copilot` (GitHub Copilot CLI) | ✅        | Must be logged in (`/login`)                 |
 | `git`                          | ✅        | Diff computation                             |
 | `node`                         | ✅        | Runtime for the CLI                          |
-| `npm`                          | ✅        | Build/install workflow                       |
+| `npm`                          | ✅        | Package manager                              |
 
 ---
 
 ## Install
 
+### From npm (recommended)
+
 ```bash
+npm install -g ai-review
+```
+
+This installs the `ai-review` binary and automatically copies the agent personas and Copilot skill into `~/.copilot/`.
+
+### From source (manual)
+
+```bash
+git clone https://github.com/Karol2846/ai-review.git ~/ai-review
 cd ~/ai-review
 bash install.sh
 ```
 
 `install.sh` installs npm dependencies, builds the TypeScript CLI, then creates symlinks:
-
-Creates symlinks:
 - `~/.local/bin/ai-review` → `dist/cli.js` CLI entry point
 - `~/.copilot/agents/*.agent.md` → agent personas
 - `~/.copilot/skills/ai-review/` → Copilot skill
 
-> Make sure `~/.local/bin` is in your `$PATH`.
+> Make sure `~/.local/bin` is in your `$PATH` when using the source install.
 
 ---
 
@@ -249,6 +258,16 @@ To customize an agent, edit the corresponding file in `~/ai-review/agents/`.
 ---
 
 ## Uninstall
+
+### npm install
+
+```bash
+npm uninstall -g ai-review
+rm -rf ~/.copilot/skills/ai-review
+rm ~/.copilot/agents/{clean-coder,tester,architect,ddd-reviewer,performance}.agent.md
+```
+
+### Source install
 
 ```bash
 rm ~/.local/bin/ai-review

@@ -1,8 +1,8 @@
 {
   "name": "ai-review",
   "version": "0.1.0",
-  "private": true,
   "description": "Multi-agent local code review powered by GitHub Copilot CLI",
+  "license": "MIT",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -17,13 +17,17 @@
   },
   "files": [
     "dist",
-    "agents"
+    "agents",
+    "skill",
+    "scripts"
   ],
   "scripts": {
     "clean:dist": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "build": "npm run clean:dist && tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run test"
+    "test": "vitest run test",
+    "postinstall": "node scripts/postinstall.js",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "chalk": "^5.4.1",
