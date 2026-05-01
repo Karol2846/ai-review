@@ -18,28 +18,11 @@ Run **before creating a PR** (or when reviewing someone else's branch) to get fo
 
 ## Install
 
-### From npm (recommended)
-
 ```bash
 npm install -g ai-review
 ```
 
 This installs the `ai-review` binary and automatically copies the agent personas and Copilot skill into `~/.copilot/`.
-
-### From source (manual)
-
-```bash
-git clone https://github.com/Karol2846/ai-review.git ~/ai-review
-cd ~/ai-review
-bash install.sh
-```
-
-`install.sh` installs npm dependencies, builds the TypeScript CLI, then creates symlinks:
-- `~/.local/bin/ai-review` → `dist/cli.js` CLI entry point
-- `~/.copilot/agents/*.agent.md` → agent personas
-- `~/.copilot/skills/ai-review/` → Copilot skill
-
-> Make sure `~/.local/bin` is in your `$PATH` when using the source install.
 
 ---
 
@@ -224,7 +207,7 @@ Each finding:
 ## File Structure
 
 ```
-~/ai-review/
+ai-review/
 ├── agents/
 │   ├── architect.agent.md
 │   ├── clean-coder.agent.md
@@ -242,8 +225,9 @@ Each finding:
 │   └── finding.schema.json
 ├── skill/
 │   └── SKILL.md           # Copilot CLI skill descriptor
+├── scripts/
+│   └── postinstall.js     # Copilot integration setup (runs after npm install)
 ├── package.json
-├── install.sh
 └── README.md
 ```
 
@@ -259,19 +243,8 @@ To customize an agent, edit the corresponding file in `~/ai-review/agents/`.
 
 ## Uninstall
 
-### npm install
-
 ```bash
 npm uninstall -g ai-review
 rm -rf ~/.copilot/skills/ai-review
 rm ~/.copilot/agents/{clean-coder,tester,architect,ddd-reviewer,performance}.agent.md
-```
-
-### Source install
-
-```bash
-rm ~/.local/bin/ai-review
-rm ~/.copilot/skills/ai-review
-rm ~/.copilot/agents/{clean-coder,tester,architect,ddd-reviewer,performance}.agent.md
-rm -rf ~/ai-review
 ```
