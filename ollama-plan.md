@@ -8,42 +8,37 @@
 - Output parsing assumes a strict JSON-array response, with fallback parsing for malformed output.
 
 ## Difficulty Assessment
-**Overall difficulty: Medium.**
-- **Moderate scope:** requires introducing a provider abstraction and new configuration surfaces without breaking existing behavior.
+**Overall difficulty: Low → Medium (phase 1).**
+- **Small initial scope:** add a minimal Ollama execution path with a fixed model (`gemma4`), keeping Copilot as the default.
 - **Integration risk:** local models may not consistently comply with the strict JSON output format.
 - **Operational concerns:** timeouts, concurrency, and prompt size limits may need tuning for smaller local models.
 - **Docs + install changes:** current postinstall flow assumes Copilot; must be made conditional.
 
 ## Plan (High-Level)
-1. **Provider Abstraction**
-   - Define a provider layer between the runner and the model invocation.
+1. **Phase 1: Minimal Ollama Path (gemma4 only)**
+   - Add a small toggle (CLI flag or env var) to switch from Copilot to Ollama without a full provider abstraction.
    - Keep Copilot as the default provider to preserve backward compatibility.
-   - Standardize error handling so provider-specific failures map to existing warning/error reporting.
+   - Call Ollama with a fixed model name (`gemma4`) to keep configuration minimal.
+   - Allow only basic host/timeout overrides if needed; defer additional config knobs.
 
-2. **Configuration & CLI Surface**
-   - Extend configuration to support provider selection and model settings.
-   - Add CLI options for provider, model name, and endpoint (with environment variable fallbacks).
-   - Validate inputs early so failures are clear and actionable.
-
-3. **Ollama Provider Integration**
-   - Add a provider that targets Ollama’s local API.
-   - Support model selection, host/port overrides, and request timeouts.
+2. **Pipeline Wiring & UX**
+   - Route the toggle to a simple Ollama call path while preserving current retry/logging behavior.
    - Ensure prompts preserve the current agent instruction + batch structure.
+   - Update the skill docs to mention the simple toggle if needed.
 
-4. **Pipeline Wiring & UX**
-   - Route all model calls through the provider layer.
-   - Preserve existing retry behavior and debug output.
-   - Update the skill docs to mention provider selection if needed.
-
-5. **Documentation & Install Updates**
-   - Update README with usage examples for local models.
-   - Make Copilot setup optional in the npm postinstall step when a non-Copilot provider is chosen.
+3. **Documentation & Install Updates**
+   - Update README with usage examples for the Ollama `gemma4` path.
+   - Make Copilot setup optional in the npm postinstall step when Ollama is used.
    - Document requirements for Ollama (running server, model availability).
 
-6. **Validation Strategy**
-   - Add tests for configuration parsing and provider selection.
-   - Add integration-style tests using mocked provider responses.
-   - Sanity-check JSON output handling with a small local model.
+4. **Validation Strategy**
+   - Add tests for the toggle parsing and Ollama path selection.
+   - Add integration-style tests using mocked Ollama responses.
+   - Sanity-check JSON output handling with the `gemma4` model.
+
+5. **Phase 2 (Later): Provider Abstraction + Model Config**
+   - Introduce a provider layer once the minimal Ollama path is stable.
+   - Add model selection and broader configuration surfaces.
 
 ## Open Questions / Risks
 - Which Ollama API endpoint to use (chat vs generate) for best JSON adherence.
