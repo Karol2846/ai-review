@@ -3,7 +3,7 @@
 ## Current State Summary
 - The runtime invokes **GitHub Copilot CLI** directly via `src/copilot.ts` using a single command (`copilot -p ... -s`).
 - The review pipeline depends on that single provider (`runCopilotPrompt` is used by the runner).
-- Installation explicitly requires `copilot` in `install.sh`, and docs/skill text reference Copilot.
+- Installation is via `npm install -g ai-review` with a postinstall step that copies agents/skills into `~/.copilot/`, and docs/skill text reference Copilot.
 - Configuration (`.ai-reviewrc.json`) is currently limited to **routing** (agent globs), not model/provider settings.
 - Output parsing assumes a strict JSON-array response, with fallback parsing for malformed output.
 
@@ -12,7 +12,7 @@
 - **Moderate scope:** requires introducing a provider abstraction and new configuration surfaces without breaking existing behavior.
 - **Integration risk:** local models may not consistently comply with the strict JSON output format.
 - **Operational concerns:** timeouts, concurrency, and prompt size limits may need tuning for smaller local models.
-- **Docs + install changes:** current install flow mandates Copilot; must be made conditional.
+- **Docs + install changes:** current postinstall flow assumes Copilot; must be made conditional.
 
 ## Plan (High-Level)
 1. **Provider Abstraction**
@@ -37,7 +37,7 @@
 
 5. **Documentation & Install Updates**
    - Update README with usage examples for local models.
-   - Make `copilot` optional in `install.sh` when a non-Copilot provider is chosen.
+   - Make Copilot setup optional in the npm postinstall step when a non-Copilot provider is chosen.
    - Document requirements for Ollama (running server, model availability).
 
 6. **Validation Strategy**
@@ -50,4 +50,3 @@
 - Whether prompt size limits must be reduced for local models.
 - How strict the JSON validation should be for non-Copilot outputs.
 - Expected performance impact under parallel load.
-
