@@ -6,7 +6,7 @@ This repository uses a TypeScript/Node runtime with npm scripts for build, typec
 
 | Goal                                                       | Command                                                                                 |
 |------------------------------------------------------------|-----------------------------------------------------------------------------------------|
-| Install locally (builds CLI + symlinks CLI, agents, skill) | `bash install.sh`                                                                      |
+| Install globally (builds CLI + copies agents, skill)       | `npm run build && npm install -g .`                                                    |
 | Type-check TS runtime                                      | `npm run typecheck`                                                                     |
 | Build runtime                                               | `npm run build`                                                                         |
 | Run tests                                                   | `npm run test`                                                                          |
@@ -32,7 +32,7 @@ This repository uses a TypeScript/Node runtime with npm scripts for build, typec
    - Default mode: injects TODO comments into source files; `--clean` removes prior `[ai-review]` markers.
 
 Install/integration surface:
-- `install.sh` builds `dist/cli.js`, symlinks it to `~/.local/bin/ai-review`, and symlinks `agents/*.agent.md` plus `skill/` into Copilot directories.
+- `npm install -g .` compiles TS to `dist/`, links `ai-review` binary via npm, and runs `scripts/postinstall.js` which copies `agents/*.agent.md` and `skill/` into `~/.copilot/`.
 - `skill/SKILL.md` defines `/ai-review` skill behavior for Copilot CLI.
 
 ## Key conventions in this codebase

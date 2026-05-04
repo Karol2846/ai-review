@@ -237,7 +237,7 @@ ai-review/
 
 Agents are tuned for: **Java 17+, Spring Boot, Spock/Groovy tests, PostgreSQL, MongoDB, SQS/SNS, DDD, REST APIs**.
 
-To customize an agent, edit the corresponding file in `~/ai-review/agents/`.
+To customize an agent, edit the corresponding file in `~/.copilot/agents/` (or in the project's `agents/` dir and reinstall).
 
 ---
 
