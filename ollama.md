@@ -32,17 +32,17 @@ cli.ts              ← entry point
 
 ### Co jest już LLM-agnostyczne (nie wymaga zmian)
 
-| Moduł | Rola | Wymaga zmian? |
-|---|---|---|
-| `promptBuilder.ts` | Buduje prompt tekstowy (markdown-like) | ❌ — generyczny tekst |
-| `responseParser.ts` | Parsuje JSON z surowego tekstu | ❌ — ma już fallbacki |
-| `aggregator.ts` | Filtruje/deduplikuje findingi | ❌ |
-| `batcher.ts` | Dzieli pliki na batche | ❌ |
-| `contextBuilder.ts` | Czyta pliki + diff | ❌ |
-| `router.ts` | Przypisuje pliki do agentów | ❌ |
-| `annotator.ts` | Wstawia TODO komentarze | ❌ |
-| `reporter.ts` | Drukuje raport w terminalu | ❌ |
-| `config.ts` | Ładuje `.ai-reviewrc.json` | ❌ (rozszerzymy o pole `provider`) |
+| Moduł               | Rola                                   | Wymaga zmian?                     |
+|---------------------|----------------------------------------|-----------------------------------|
+| `promptBuilder.ts`  | Buduje prompt tekstowy (markdown-like) | ❌ — generyczny tekst              |
+| `responseParser.ts` | Parsuje JSON z surowego tekstu         | ❌ — ma już fallbacki              |
+| `aggregator.ts`     | Filtruje/deduplikuje findingi          | ❌                                 |
+| `batcher.ts`        | Dzieli pliki na batche                 | ❌                                 |
+| `contextBuilder.ts` | Czyta pliki + diff                     | ❌                                 |
+| `router.ts`         | Przypisuje pliki do agentów            | ❌                                 |
+| `annotator.ts`      | Wstawia TODO komentarze                | ❌                                 |
+| `reporter.ts`       | Drukuje raport w terminalu             | ❌                                 |
+| `config.ts`         | Ładuje `.ai-reviewrc.json`             | ❌ (rozszerzymy o pole `provider`) |
 
 ---
 
@@ -66,7 +66,7 @@ HTTP POST na Ollama API (`/api/generate`):
 
 ```json
 {
-  "model": "gemma3:27b",
+  "model": "qwen3.6:27b",
   "prompt": "...(cały prompt jak do Copilota)...",
   "stream": false
 }
@@ -81,13 +81,13 @@ Obecnie `runner.ts` hard-importuje `runCopilotPrompt`. Zmiana: `runAgentBatches`
 ### Krok 5: CLI flag lub config
 
 - `--provider ollama` / `--provider copilot` (domyślnie copilot)
-- `--model gemma3:27b` — nazwa modelu w Ollama
+- `--model qwen3.6:27b` — nazwa modelu w Ollama
 - `--api-url http://localhost:11434` — URL serwera (lokalny lub zdalny)
 - Lub w `.ai-reviewrc.json`:
   ```json
   {
     "provider": "ollama",
-    "ollamaModel": "gemma3:27b",
+    "ollamaModel": "qwen3.6:27b",
     "ollamaUrl": "http://localhost:11434"
   }
   ```
@@ -121,7 +121,7 @@ Zdalna:   fetch("https://gpu-server.example.com:11434/api/generate", ...)
 ```typescript
 interface OllamaProviderConfig {
   readonly url: string;              // http://localhost:11434 (domyślny)
-  readonly model: string;            // gemma3:27b
+  readonly model: string;            // qwen3.6:27b
   readonly apiKey?: string;          // opcjonalny Bearer token
   readonly timeoutMs?: number;       // domyślnie 120_000 (2 min)
   readonly tlsRejectUnauthorized?: boolean; // domyślnie true
@@ -131,10 +131,10 @@ interface OllamaProviderConfig {
 CLI:
 ```bash
 # Lokalna Ollama
-ai-review --provider ollama --model gemma3:27b
+ai-review --provider ollama --model qwen3.6:27b
 
 # Zdalna Ollama
-ai-review --provider ollama --model gemma3:27b \
+ai-review --provider ollama --model qwen3.6:27b \
           --api-url https://gpu-server.example.com:11434 \
           --api-key sk-my-secret-key
 
@@ -152,7 +152,7 @@ Wiele self-hosted LLM-ów (vLLM, text-generation-inference, LM Studio, LocalAI) 
 ```typescript
 // POST /v1/chat/completions
 {
-  "model": "gemma3:27b",
+  "model": "qwen3.6:27b",
   "messages": [{ "role": "user", "content": "...(prompt)..." }],
   "temperature": 0.1
 }
