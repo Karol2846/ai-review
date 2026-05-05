@@ -22,6 +22,17 @@ export { main as runCliMain, runCli } from "./cli";
 export { renderReport } from "./reporter";
 export { applyAnnotations, cleanAnnotations, AnnotatorError } from "./annotator";
 export { AGENT_NAMES, LLM_PROVIDER_NAMES } from "./routingTypes";
+export {
+  DEFAULT_INSTALL_PROVIDER,
+  INSTALL_PROVIDER_CONFIG_FILE_NAME,
+  INSTALL_PROVIDER_TYPES,
+  InstallProviderConfigParseError,
+  getInstallProviderConfigPath,
+  isInstallProviderType,
+  parseInstallProviderConfig,
+  parseInstallProviderConfigObject,
+  resolveInstallProviderConfig,
+} from "./installProviderConfig";
 export type {
   AggregatedFinding,
   AggregationDedupStats,
@@ -66,6 +77,13 @@ export type {
   RunnerSummary,
 } from "./runner";
 export type { LlmProvider, LlmProviderErrorCode } from "./llmProvider";
+export type {
+  InstallProviderConfig,
+  InstallProviderConfigParseErrorCode,
+  InstallProviderType,
+  ParseInstallProviderConfigResult,
+  ResolveInstallProviderConfigResult,
+} from "./installProviderConfig";
 export type { OllamaProviderConfig } from "./providers/ollamaProvider";
 export type {
   ParsedBatchFindings,

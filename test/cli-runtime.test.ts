@@ -1,17 +1,29 @@
-import { mkdirSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { runCli, type CliRuntimeDependencies } from "../src/cli";
 import type { AggregatedFinding } from "../src/aggregator";
 import { CopilotProvider } from "../src/copilot";
+import { getInstallProviderConfigPath } from "../src/installProviderConfig";
+import * as ollamaProviderModule from "../src/providers/ollamaProvider";
 import type {
   ReviewPipelineWarning,
   RunReviewPipelineInput,
   RunReviewPipelineResult,
 } from "../src/reviewPipeline";
 import type { RoutingRuntimeConfig } from "../src/routingTypes";
+
+const installProviderConfigPath = getInstallProviderConfigPath(resolve(process.cwd(), "src"));
+
+function removeInstallProviderConfig(): void {
+  rmSync(installProviderConfigPath, { force: true });
+}
+
+function writeInstallProviderConfig(content: string): void {
+  writeFileSync(installProviderConfigPath, content, "utf8");
+}
 
 function createRoutingConfig(): RoutingRuntimeConfig {
   return {
@@ -186,6 +198,11 @@ function createRuntimeDeps(): RuntimeTestDeps {
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  removeInstallProviderConfig();
+});
+
+afterEach(() => {
+  removeInstallProviderConfig();
 });
 
 describe("runCli runtime flow", () => {
@@ -293,6 +310,56 @@ describe("runCli runtime flow", () => {
     expect(deps.writeStdout).toHaveBeenCalledWith(JSON.stringify([finding]));
     expect(deps.renderReport).not.toHaveBeenCalled();
     expect(deps.applyAnnotations).not.toHaveBeenCalled();
+  });
+
+  it("uses Ollama provider when install config selects ollama", async () => {
+    const deps = createRuntimeDeps();
+    const ollamaProvider = {
+      sendPrompt: vi.fn().mockResolvedValue("ok"),
+    };
+    const createOllamaProviderSpy = vi
+      .spyOn(ollamaProviderModule, "createOllamaProvider")
+      .mockReturnValue(ollamaProvider);
+    writeInstallProviderConfig('{ "provider": "ollama" }');
+
+    const exitCode = await runCli(["--json"], deps.overrides);
+
+    expect(exitCode).toBe(0);
+    expect(createOllamaProviderSpy).toHaveBeenCalledTimes(1);
+    const reviewInput = deps.runReviewPipeline.mock.calls[0]?.[0];
+    expect(reviewInput?.provider).toBe(ollamaProvider);
+  });
+
+  it("uses Copilot provider when install config selects copilot", async () => {
+    const deps = createRuntimeDeps();
+    const createOllamaProviderSpy = vi.spyOn(ollamaProviderModule, "createOllamaProvider");
+    writeInstallProviderConfig('{ "provider": "copilot" }');
+
+    const exitCode = await runCli(["--json"], deps.overrides);
+
+    expect(exitCode).toBe(0);
+    expect(createOllamaProviderSpy).not.toHaveBeenCalled();
+    const reviewInput = deps.runReviewPipeline.mock.calls[0]?.[0];
+    expect(reviewInput?.provider).toBeInstanceOf(CopilotProvider);
+  });
+
+  it("falls back to Copilot provider when install config is missing or invalid", async () => {
+    const createOllamaProviderSpy = vi.spyOn(ollamaProviderModule, "createOllamaProvider");
+
+    const depsMissingConfig = createRuntimeDeps();
+    const missingConfigExitCode = await runCli(["--json"], depsMissingConfig.overrides);
+    expect(missingConfigExitCode).toBe(0);
+    expect(depsMissingConfig.runReviewPipeline.mock.calls[0]?.[0]?.provider).toBeInstanceOf(CopilotProvider);
+
+    const depsInvalidConfig = createRuntimeDeps();
+    writeInstallProviderConfig('{ "provider": "unsupported" }');
+    const invalidConfigExitCode = await runCli(["--json"], depsInvalidConfig.overrides);
+    expect(invalidConfigExitCode).toBe(0);
+    expect(depsInvalidConfig.runReviewPipeline.mock.calls[0]?.[0]?.provider).toBeInstanceOf(
+      CopilotProvider
+    );
+
+    expect(createOllamaProviderSpy).not.toHaveBeenCalled();
   });
 
   it("returns empty JSON when no files remain after --files filter", async () => {

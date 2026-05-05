@@ -24,6 +24,10 @@ npm install -g ai-review
 
 This installs the `ai-review` binary and also attempts to copy the agent personas and Copilot skill into `~/.copilot/` for Copilot-based workflows.
 
+During install, a postinstall prompt lets you choose a default provider: `copilot` or `ollama`.
+- Interactive install: prompts and writes the choice to `.ai-review-install-provider.json` in the install directory.
+- Non-interactive install: defaults to `copilot`.
+
 ---
 
 ## Runtime (Phase 6 complete)
@@ -43,8 +47,10 @@ npm run test
 `npm run test` runs the Vitest suite from `test/` (kept outside production build output).
 
 Current MVP behavior:
-- CLI runtime uses Copilot by default.
-- `ollama` provider code exists in the repository for future extension, but is not exposed as CLI options in this MVP.
+- Provider selection is install-time only (`copilot` or `ollama`).
+- No CLI provider flags/options are available in this MVP.
+- Runtime reads `.ai-review-install-provider.json` from the install directory.
+- If config is missing/invalid, runtime falls back to `copilot`.
 
 ---
 

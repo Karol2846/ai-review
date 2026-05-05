@@ -16,9 +16,11 @@ import {
 } from "./annotator";
 import {CliArgsError, type CliOptions, formatCliUsage, parseCliArgs} from "./cliArgs";
 import {CopilotProvider} from "./copilot";
+import {resolveInstallProviderConfig, getInstallProviderConfigPath} from "./installProviderConfig";
 import {loadRoutingConfig, type LoadRoutingConfigResult} from "./config";
 import {getChangedFiles, getMergeBase} from "./git";
 import type {LlmProvider} from "./llmProvider";
+import {createOllamaProvider} from "./providers/ollamaProvider";
 import {renderReport} from "./reporter";
 import {runReviewPipeline, type RunReviewPipelineInput, type RunReviewPipelineResult} from "./reviewPipeline";
 import type {AgentInstructionsByAgent, RunnerRetryConfig} from "./runner";
@@ -237,13 +239,23 @@ function printDebugWarnings(
   }
 }
 
-function resolveProviderConfig(): {
+async function resolveProviderConfig(): Promise<{
   readonly provider: LlmProvider;
   readonly providerName: LlmProviderName;
-} {
+}> {
+  let providerName: LlmProviderName = DEFAULT_PROVIDER;
+
+  try {
+    const configPath = getInstallProviderConfigPath(__dirname);
+    const configContent = await readFile(configPath, "utf8");
+    providerName = resolveInstallProviderConfig(configContent, DEFAULT_PROVIDER).provider;
+  } catch {
+    providerName = DEFAULT_PROVIDER;
+  }
+
   return {
-    providerName: DEFAULT_PROVIDER,
-    provider: new CopilotProvider(),
+    providerName,
+    provider: providerName === "ollama" ? createOllamaProvider() : new CopilotProvider(),
   };
 }
 
@@ -359,7 +371,7 @@ export async function runCli(
       filteredRoutingConfig.selectedAgents
     );
     debugWarnings.push(...instructionsResult.warnings);
-    const resolvedProvider = resolveProviderConfig();
+    const resolvedProvider = await resolveProviderConfig();
     debugWarnings.push(`Using provider "${resolvedProvider.providerName}".`);
 
     const reviewResult = await deps.runReviewPipeline({

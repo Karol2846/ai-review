@@ -7,7 +7,8 @@ allowed-tools: shell, view, edit
 # ai-review — Multi-Agent Code Review Skill
 
 When invoked, run `ai-review` from PATH. If unavailable, run `node dist/cli.js` from this repository root.
-Runtime uses the Copilot provider in this MVP. `ollama` provider code exists for future extension, but is not exposed through CLI options.
+Provider choice is install-time only (`copilot` or `ollama`) via postinstall default configuration.
+No CLI provider flags/options exist in this MVP. Runtime uses the install-time default.
 
 ## How It Works
 

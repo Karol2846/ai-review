@@ -6,12 +6,17 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const os = require("node:os");
+const readline = require("node:readline");
 
 const RESET = "\x1b[0m";
 const GREEN = "\x1b[32m";
 const CYAN = "\x1b[36m";
 const YELLOW = "\x1b[33m";
 const DIM = "\x1b[2m";
+
+const INSTALL_PROVIDER_CONFIG_FILE_NAME = ".ai-review-install-provider.json";
+const INSTALL_PROVIDER_TYPES = ["copilot", "ollama"];
+const DEFAULT_INSTALL_PROVIDER = "copilot";
 
 function log(msg) {
   process.stdout.write(msg + "\n");
@@ -34,7 +39,83 @@ function copyDir(src, dest) {
   }
 }
 
-function run() {
+function isInteractiveInstall() {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    return false;
+  }
+
+  const ciValue = String(process.env.CI ?? "").trim().toLowerCase();
+  return ciValue !== "true" && ciValue !== "1";
+}
+
+function parseProviderSelection(input) {
+  const normalized = String(input ?? "")
+    .trim()
+    .toLowerCase();
+
+  if (normalized === "" || normalized === "1" || normalized === "copilot") {
+    return "copilot";
+  }
+
+  if (normalized === "2" || normalized === "ollama") {
+    return "ollama";
+  }
+
+  return null;
+}
+
+function askQuestion(rl, question) {
+  return new Promise((resolve) => {
+    rl.question(question, resolve);
+  });
+}
+
+async function selectInstallProvider() {
+  if (!isInteractiveInstall()) {
+    log(
+      `  ${DIM}No interactive terminal detected (or CI). Using default provider "${DEFAULT_INSTALL_PROVIDER}".${RESET}`
+    );
+    return DEFAULT_INSTALL_PROVIDER;
+  }
+
+  log("\nChoose the default ai-review provider:");
+  log(`  ${DIM}1) copilot (default)${RESET}`);
+  log(`  ${DIM}2) ollama${RESET}`);
+
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  try {
+    const answer = await askQuestion(rl, "Select provider [1/2]: ");
+    const selected = parseProviderSelection(answer);
+
+    if (selected === null) {
+      warn(
+        `Invalid selection "${String(answer)}". Falling back to default provider "${DEFAULT_INSTALL_PROVIDER}".`
+      );
+      return DEFAULT_INSTALL_PROVIDER;
+    }
+
+    return selected;
+  } finally {
+    rl.close();
+  }
+}
+
+function writeInstallProviderConfig(pkgRoot, provider) {
+  if (!INSTALL_PROVIDER_TYPES.includes(provider)) {
+    throw new Error(`Unsupported provider "${String(provider)}".`);
+  }
+
+  const configPath = path.join(pkgRoot, INSTALL_PROVIDER_CONFIG_FILE_NAME);
+  const config = JSON.stringify({ provider }, null, 2);
+  fs.writeFileSync(configPath, `${config}\n`, "utf8");
+  return configPath;
+}
+
+async function run() {
   const pkgRoot = path.join(__dirname, "..");
   const agentsSrc = path.join(pkgRoot, "agents");
   const skillSrc = path.join(pkgRoot, "skill");
@@ -43,6 +124,10 @@ function run() {
   const skillDest = path.join(copilotDir, "skills", "ai-review");
 
   log(`\n${CYAN}Setting up ai-review Copilot integration...${RESET}`);
+
+  const installProvider = await selectInstallProvider();
+  const installConfigPath = writeInstallProviderConfig(pkgRoot, installProvider);
+  log(`  ${DIM}✓ Saved default provider "${installProvider}" to ${installConfigPath}${RESET}`);
 
   // --- Agents ---
   if (!fs.existsSync(agentsSrc)) {
@@ -80,9 +165,7 @@ function run() {
   log("");
 }
 
-try {
-  run();
-} catch (err) {
+run().catch((err) => {
   warn(`Copilot integration setup failed (non-fatal): ${err?.message ?? String(err)}`);
   warn("You can re-run setup manually: node node_modules/ai-review/scripts/postinstall.js");
-}
+});
