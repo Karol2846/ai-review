@@ -1,21 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentBatch } from "../src/batcher";
+import { LlmProviderError, type LlmProvider } from "../src/llmProvider";
+import { runAgentBatches } from "../src/runner";
 
-const { runCopilotPromptMock } = vi.hoisted(() => ({
-  runCopilotPromptMock: vi.fn(),
+const { sendPromptMock } = vi.hoisted(() => ({
+  sendPromptMock: vi.fn(),
 }));
 
-vi.mock("../src/copilot", async () => {
-  const actual = await vi.importActual<typeof import("../src/copilot")>("../src/copilot");
-  return {
-    ...actual,
-    runCopilotPrompt: runCopilotPromptMock,
-  };
-});
-
-import { CopilotServiceError } from "../src/copilot";
-import { runAgentBatches } from "../src/runner";
+const provider: LlmProvider = {
+  sendPrompt: sendPromptMock,
+};
 
 function createBatch(id: string, batchIndex = 0, totalBatches = 1): AgentBatch {
   return {
@@ -47,7 +42,7 @@ function delay(ms: number): Promise<void> {
 }
 
 beforeEach(() => {
-  runCopilotPromptMock.mockReset();
+  sendPromptMock.mockReset();
 });
 
 describe("runAgentBatches", () => {
@@ -55,7 +50,7 @@ describe("runAgentBatches", () => {
     const firstBatch = createBatch("batch-1", 0, 2);
     const secondBatch = createBatch("batch-2", 1, 2);
 
-    runCopilotPromptMock.mockImplementation(async (prompt: string) => {
+    sendPromptMock.mockImplementation(async (prompt: string) => {
       if (prompt.includes("batch_id: batch-1")) {
         await delay(20);
         return "output-1";
@@ -66,6 +61,7 @@ describe("runAgentBatches", () => {
     const result = await runAgentBatches({
       batches: [firstBatch, secondBatch],
       agentInstructions: { architect: "Review architecture." },
+      provider,
       concurrency: 2,
       retry: { maxRetries: 2, retryDelayMs: 0 },
     });
@@ -76,19 +72,20 @@ describe("runAgentBatches", () => {
   });
 
   it("retries transient command failures and succeeds within retry budget", async () => {
-    runCopilotPromptMock
-      .mockRejectedValueOnce(new CopilotServiceError("COMMAND_FAILED", "Temporary outage"))
-      .mockRejectedValueOnce(new CopilotServiceError("COMMAND_FAILED", "Temporary outage"))
+    sendPromptMock
+      .mockRejectedValueOnce(new LlmProviderError("COMMAND_FAILED", "Temporary outage"))
+      .mockRejectedValueOnce(new LlmProviderError("COMMAND_FAILED", "Temporary outage"))
       .mockResolvedValueOnce("recovered");
 
     const result = await runAgentBatches({
       batches: [createBatch("batch-retry")],
       agentInstructions: { architect: "Review architecture." },
+      provider,
       concurrency: 1,
       retry: { maxRetries: 2, retryDelayMs: 0 },
     });
 
-    expect(runCopilotPromptMock).toHaveBeenCalledTimes(3);
+    expect(sendPromptMock).toHaveBeenCalledTimes(3);
     expect(result.successes).toHaveLength(1);
     expect(result.successes[0]).toMatchObject({
       batchId: "batch-retry",
@@ -99,18 +96,17 @@ describe("runAgentBatches", () => {
   });
 
   it("records warning metadata when transient failures exceed maxRetries", async () => {
-    runCopilotPromptMock.mockRejectedValue(
-      new CopilotServiceError("COMMAND_FAILED", "Timeout while contacting model")
-    );
+    sendPromptMock.mockRejectedValue(new LlmProviderError("COMMAND_FAILED", "Timeout while contacting model"));
 
     const result = await runAgentBatches({
       batches: [createBatch("batch-timeout")],
       agentInstructions: { architect: "Review architecture." },
+      provider,
       concurrency: 1,
       retry: { maxRetries: 2, retryDelayMs: 0 },
     });
 
-    expect(runCopilotPromptMock).toHaveBeenCalledTimes(3);
+    expect(sendPromptMock).toHaveBeenCalledTimes(3);
     expect(result.failures).toHaveLength(1);
     expect(result.failures[0]).toMatchObject({
       batchId: "batch-timeout",
@@ -123,18 +119,17 @@ describe("runAgentBatches", () => {
   });
 
   it("records error metadata for non-transient failures without retrying", async () => {
-    runCopilotPromptMock.mockRejectedValue(
-      new CopilotServiceError("NOT_AUTHENTICATED", "Please login first")
-    );
+    sendPromptMock.mockRejectedValue(new LlmProviderError("NOT_AUTHENTICATED", "Please login first"));
 
     const result = await runAgentBatches({
       batches: [createBatch("batch-auth")],
       agentInstructions: { architect: "Review architecture." },
+      provider,
       concurrency: 1,
       retry: { maxRetries: 2, retryDelayMs: 0 },
     });
 
-    expect(runCopilotPromptMock).toHaveBeenCalledTimes(1);
+    expect(sendPromptMock).toHaveBeenCalledTimes(1);
     expect(result.failures[0]).toMatchObject({
       batchId: "batch-auth",
       code: "NOT_AUTHENTICATED",
@@ -149,11 +144,12 @@ describe("runAgentBatches", () => {
     const result = await runAgentBatches({
       batches: [createBatch("batch-no-instruction")],
       agentInstructions: {},
+      provider,
       concurrency: 1,
       retry: { maxRetries: 2, retryDelayMs: 0 },
     });
 
-    expect(runCopilotPromptMock).not.toHaveBeenCalled();
+    expect(sendPromptMock).not.toHaveBeenCalled();
     expect(result.failures[0]).toMatchObject({
       batchId: "batch-no-instruction",
       code: "MISSING_AGENT_INSTRUCTION",

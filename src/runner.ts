@@ -1,7 +1,12 @@
 import pMap from "p-map";
 
 import type { AgentBatch } from "./batcher";
-import { CopilotServiceError, type CopilotServiceErrorCode, runCopilotPrompt } from "./copilot";
+import {
+  LlmProviderError,
+  type LlmProvider,
+  type LlmProviderErrorCode,
+  isTransientLlmProviderErrorCode,
+} from "./llmProvider";
 import { buildAgentBatchPrompt } from "./promptBuilder";
 import type { AgentName } from "./routingTypes";
 
@@ -19,12 +24,13 @@ type AgentInstructionsRecord = Readonly<Record<string, string>>;
 export interface RunAgentBatchesInput {
   readonly batches: readonly AgentBatch[];
   readonly agentInstructions: AgentInstructionsByAgent;
+  readonly provider: LlmProvider;
   readonly concurrency: number;
   readonly retry: RunnerRetryConfig;
 }
 
 export type RunnerFailureCode =
-  | CopilotServiceErrorCode
+  | LlmProviderErrorCode
   | "MISSING_AGENT_INSTRUCTION"
   | "PROMPT_BUILD_FAILED"
   | "UNKNOWN";
@@ -111,16 +117,12 @@ function readAgentInstruction(
   return byAgent[agent];
 }
 
-function isTransientCopilotError(error: unknown): boolean {
-  return error instanceof CopilotServiceError && error.code === "COMMAND_FAILED";
-}
-
 function normalizeFailure(error: unknown): Pick<BatchRunFailure, "code" | "message" | "isTransient"> {
-  if (error instanceof CopilotServiceError) {
+  if (error instanceof LlmProviderError) {
     return {
       code: error.code,
       message: error.message,
-      isTransient: isTransientCopilotError(error),
+      isTransient: isTransientLlmProviderErrorCode(error.code),
     };
   }
 
@@ -187,6 +189,7 @@ function validateInput(input: RunAgentBatchesInput): void {
 async function runSingleBatch(
   batch: AgentBatch,
   agentInstructions: AgentInstructionsByAgent,
+  provider: LlmProvider,
   retry: RunnerRetryConfig
 ): Promise<BatchRunResult> {
   const rawAgentInstruction = readAgentInstruction(agentInstructions, batch.agent);
@@ -217,7 +220,7 @@ async function runSingleBatch(
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      const rawOutput = await runCopilotPrompt(prompt);
+      const rawOutput = await provider.sendPrompt(prompt);
       return {
         status: "success",
         batchId: batch.id,
@@ -287,7 +290,7 @@ export async function runAgentBatches(input: RunAgentBatchesInput): Promise<RunA
 
   const results = await pMap(
     input.batches,
-    async (batch) => runSingleBatch(batch, input.agentInstructions, input.retry),
+    async (batch) => runSingleBatch(batch, input.agentInstructions, input.provider, input.retry),
     { concurrency: input.concurrency }
   );
 

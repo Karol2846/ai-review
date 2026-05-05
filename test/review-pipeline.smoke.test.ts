@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentBatch } from "../src/batcher";
 import type { BuildFileContextsResult } from "../src/contextBuilder";
+import type { LlmProvider } from "../src/llmProvider";
 import type {
   BatchRunFailure,
   BatchRunResult,
@@ -123,6 +124,7 @@ beforeEach(() => {
 
 describe("runReviewPipeline (smoke)", () => {
   it("wires routing, batching, parser, and aggregator into a deterministic end-to-end flow", async () => {
+    const provider: LlmProvider = { sendPrompt: vi.fn() };
     const contextResult: BuildFileContextsResult = {
       contexts: [
         {
@@ -147,6 +149,7 @@ describe("runReviewPipeline (smoke)", () => {
     buildFileContextsMock.mockResolvedValue(contextResult);
 
     runAgentBatchesMock.mockImplementation(async (input: RunAgentBatchesInput) => {
+      expect(input.provider).toBe(provider);
       const results = input.batches.map((batch) => {
         if (batch.agent === "architect") {
           return createSuccess(
@@ -176,6 +179,7 @@ describe("runReviewPipeline (smoke)", () => {
         tester: "Review tests and edge cases.",
         architect: "Review architecture and API safety.",
       },
+      provider,
       maxCharLimit: 4_000,
       concurrency: 2,
       retry: { maxRetries: 1, retryDelayMs: 0 },
@@ -202,6 +206,7 @@ describe("runReviewPipeline (smoke)", () => {
   });
 
   it("surfaces failed batches in warnings/metadata and still returns successful findings", async () => {
+    const provider: LlmProvider = { sendPrompt: vi.fn() };
     const contextResult: BuildFileContextsResult = {
       contexts: [
         {
@@ -264,6 +269,7 @@ describe("runReviewPipeline (smoke)", () => {
         tester: "Review tests and edge cases.",
         architect: "Review architecture and API safety.",
       },
+      provider,
       maxCharLimit: 4_000,
       concurrency: 2,
       retry: { maxRetries: 1, retryDelayMs: 0 },

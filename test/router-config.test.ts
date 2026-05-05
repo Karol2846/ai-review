@@ -184,5 +184,20 @@ describe("loadRoutingConfig", () => {
     expect(result.config.agentGlobs["custom-docs"]).toEqual(["docs/**/*.md"]);
     expect(result.config.agentGlobs.architect).toEqual(defaultRoutingConfig.agentGlobs.architect);
   });
+
+  it("warns and ignores removed runtime root key", () => {
+    const fixtureRoot = writeJsonConfigFixture("runtime-removed", {
+      runtime: {
+        provider: "ollama",
+      },
+    });
+
+    const result = loadRoutingConfig(fixtureRoot);
+
+    expect(result.config).toEqual(defaultRoutingConfig);
+    expect(result.warnings.some((warning) => warning.includes('unsupported root key "runtime"'))).toBe(
+      true
+    );
+  });
 });
 

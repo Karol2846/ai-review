@@ -42,7 +42,7 @@ function cloneAgentGlobs(agentGlobs: AgentGlobsMap): AgentGlobsMap {
   return cloned;
 }
 
-function cloneRuntimeConfig(config: RoutingRuntimeConfig): RoutingRuntimeConfig {
+function cloneRoutingConfig(config: RoutingRuntimeConfig): RoutingRuntimeConfig {
   return {
     ...config,
     agentGlobs: cloneAgentGlobs(config.agentGlobs),
@@ -157,7 +157,7 @@ function mergeOverrideConfig(
 }
 
 export function loadRoutingConfig(repoRootPath: string): LoadRoutingConfigResult {
-  const defaultConfig = cloneRuntimeConfig(defaultRoutingConfig);
+  const defaultConfig = cloneRoutingConfig(defaultRoutingConfig);
   const configPath = join(repoRootPath, CONFIG_FILE_NAME);
 
   if (!existsSync(configPath)) {

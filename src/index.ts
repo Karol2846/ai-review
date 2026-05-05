@@ -1,5 +1,12 @@
 export { getChangedFiles, getFileDiff, getMergeBase, GitServiceError } from "./git";
-export { CopilotServiceError, runCopilotPrompt } from "./copilot";
+export { CopilotProvider, CopilotServiceError, runCopilotPrompt } from "./copilot";
+export type { CopilotPromptRunner } from "./copilot";
+export { createOllamaProvider, parseOllamaResponseText, normalizeOllamaUrl } from "./providers/ollamaProvider";
+export {
+  LlmProviderError,
+  isTransientLlmProviderError,
+  isTransientLlmProviderErrorCode,
+} from "./llmProvider";
 export { defaultRoutingConfig } from "./defaultConfig";
 export { loadRoutingConfig } from "./config";
 export { routeFilesToAgents } from "./router";
@@ -14,7 +21,7 @@ export { formatCliUsage, parseCliArgs, CliArgsError } from "./cliArgs";
 export { main as runCliMain, runCli } from "./cli";
 export { renderReport } from "./reporter";
 export { applyAnnotations, cleanAnnotations, AnnotatorError } from "./annotator";
-export { AGENT_NAMES } from "./routingTypes";
+export { AGENT_NAMES, LLM_PROVIDER_NAMES } from "./routingTypes";
 export type {
   AggregatedFinding,
   AggregationDedupStats,
@@ -27,6 +34,7 @@ export type {
 export type {
   AgentGlobsMap,
   AgentName,
+  LlmProviderName,
   RoutingRuntimeConfig,
   UserRoutingConfigOverride,
 } from "./routingTypes";
@@ -57,6 +65,8 @@ export type {
   RunnerRetryConfig,
   RunnerSummary,
 } from "./runner";
+export type { LlmProvider, LlmProviderErrorCode } from "./llmProvider";
+export type { OllamaProviderConfig } from "./providers/ollamaProvider";
 export type {
   ParsedBatchFindings,
   ReviewPipelineMetadata,

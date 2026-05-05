@@ -7,11 +7,12 @@ allowed-tools: shell, view, edit
 # ai-review — Multi-Agent Code Review Skill
 
 When invoked, run `ai-review` from PATH. If unavailable, run `node dist/cli.js` from this repository root.
+Runtime uses the Copilot provider in this MVP. `ollama` provider code exists for future extension, but is not exposed through CLI options.
 
 ## How It Works
 
 1. **Scope**: Determines changed files via `git diff` against the base branch (merge-base).
-2. **Analyze**: Routes files to selected agents and runs parallel Copilot prompts in the Node runtime.
+2. **Analyze**: Routes files to selected agents and runs parallel agent prompts in the Node runtime.
 3. **Aggregate**: Collects findings, applies severity filtering, deduplicates by fingerprint, and sorts.
 4. **Output**: Annotates source files with TODO comments by default, and optionally prints a terminal report (`--report`).
 

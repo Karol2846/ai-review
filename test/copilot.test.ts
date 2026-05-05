@@ -8,7 +8,7 @@ vi.mock("execa", () => ({
   execa: execaMock,
 }));
 
-import { CopilotServiceError, runCopilotPrompt } from "../src/copilot";
+import { CopilotProvider, CopilotServiceError, runCopilotPrompt } from "../src/copilot";
 
 beforeEach(() => {
   execaMock.mockReset();
@@ -64,5 +64,25 @@ describe("runCopilotPrompt", () => {
     });
 
     await expect(runCopilotPrompt("prompt")).rejects.toBeInstanceOf(CopilotServiceError);
+  });
+});
+
+describe("CopilotProviderAdapter", () => {
+  it("delegates sendPrompt to runCopilotPrompt by default", async () => {
+    execaMock.mockResolvedValueOnce({ stdout: "review-output" });
+    const provider = new CopilotProvider();
+
+    await expect(provider.sendPrompt("review this diff")).resolves.toBe("review-output");
+    expect(execaMock).toHaveBeenCalledWith("copilot", ["-p", "review this diff", "-s"], {
+      reject: true,
+    });
+  });
+
+  it("supports injected prompt runner for future runtime wiring", async () => {
+    const runPrompt = vi.fn().mockResolvedValue("injected-output");
+    const provider = new CopilotProvider(runPrompt);
+
+    await expect(provider.sendPrompt("prompt-from-runner")).resolves.toBe("injected-output");
+    expect(runPrompt).toHaveBeenCalledWith("prompt-from-runner");
   });
 });

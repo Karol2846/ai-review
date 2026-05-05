@@ -19,6 +19,7 @@ import {
 } from "./responseParser";
 import { routeFilesToAgents } from "./router";
 import type { AgentName, RoutingRuntimeConfig } from "./routingTypes";
+import type { LlmProvider } from "./llmProvider";
 import {
   runAgentBatches,
   type AgentInstructionsByAgent,
@@ -35,6 +36,7 @@ export interface RunReviewPipelineInput {
   readonly changedFiles?: readonly string[];
   readonly routingConfig: RoutingRuntimeConfig;
   readonly agentInstructions: AgentInstructionsByAgent;
+  readonly provider: LlmProvider;
   readonly maxCharLimit: number;
   readonly concurrency: number;
   readonly retry: RunnerRetryConfig;
@@ -192,6 +194,7 @@ export async function runReviewPipeline(
   const runnerResult = await runAgentBatches({
     batches: batchesResult.batches,
     agentInstructions: input.agentInstructions,
+    provider: input.provider,
     concurrency: input.concurrency,
     retry: input.retry,
   });

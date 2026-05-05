@@ -1,29 +1,31 @@
 #!/usr/bin/env node
 
-import { readFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { join } from "node:path";
-import { resolve } from "node:path";
+import {readFile} from "node:fs/promises";
+import {homedir} from "node:os";
+import {join, resolve} from "node:path";
 
-import { execa } from "execa";
+import {execa} from "execa";
 import micromatch from "micromatch";
 
 import {
-  applyAnnotations,
-  cleanAnnotations,
   type AnnotationFinding,
+  applyAnnotations,
   type ApplyAnnotationsResult,
+  cleanAnnotations,
   type CleanAnnotationsResult,
 } from "./annotator";
-import { CliArgsError, formatCliUsage, parseCliArgs, type CliOptions } from "./cliArgs";
-import { loadRoutingConfig, type LoadRoutingConfigResult } from "./config";
-import { getChangedFiles, getMergeBase } from "./git";
-import { renderReport } from "./reporter";
-import { runReviewPipeline, type RunReviewPipelineInput, type RunReviewPipelineResult } from "./reviewPipeline";
-import type { AgentInstructionsByAgent, RunnerRetryConfig } from "./runner";
-import type { RoutingRuntimeConfig } from "./routingTypes";
+import {CliArgsError, type CliOptions, formatCliUsage, parseCliArgs} from "./cliArgs";
+import {CopilotProvider} from "./copilot";
+import {loadRoutingConfig, type LoadRoutingConfigResult} from "./config";
+import {getChangedFiles, getMergeBase} from "./git";
+import type {LlmProvider} from "./llmProvider";
+import {renderReport} from "./reporter";
+import {runReviewPipeline, type RunReviewPipelineInput, type RunReviewPipelineResult} from "./reviewPipeline";
+import type {AgentInstructionsByAgent, RunnerRetryConfig} from "./runner";
+import type {LlmProviderName, RoutingRuntimeConfig} from "./routingTypes";
 
 const DEFAULT_MAX_CHAR_LIMIT = 14_000;
+const DEFAULT_PROVIDER: LlmProviderName = "copilot";
 const DEFAULT_RETRY: RunnerRetryConfig = {
   maxRetries: 1,
   retryDelayMs: 500,
@@ -174,7 +176,6 @@ async function loadAgentInstructionsFromDisk(
       warnings.push(
         `Failed to load instruction for "${agentName}". Checked: ${attemptedPaths.join(", ")}.`
       );
-      continue;
     }
   }
 
@@ -234,6 +235,16 @@ function printDebugWarnings(
   for (const warning of warnings) {
     writeStderr(`WARN: ${warning}`);
   }
+}
+
+function resolveProviderConfig(): {
+  readonly provider: LlmProvider;
+  readonly providerName: LlmProviderName;
+} {
+  return {
+    providerName: DEFAULT_PROVIDER,
+    provider: new CopilotProvider(),
+  };
 }
 
 function defaultDependencies(): CliRuntimeDependencies {
@@ -348,6 +359,8 @@ export async function runCli(
       filteredRoutingConfig.selectedAgents
     );
     debugWarnings.push(...instructionsResult.warnings);
+    const resolvedProvider = resolveProviderConfig();
+    debugWarnings.push(`Using provider "${resolvedProvider.providerName}".`);
 
     const reviewResult = await deps.runReviewPipeline({
       repoRootPath,
@@ -355,6 +368,7 @@ export async function runCli(
       changedFiles,
       routingConfig: filteredRoutingConfig.config,
       agentInstructions: instructionsResult.instructions,
+      provider: resolvedProvider.provider,
       maxCharLimit: DEFAULT_MAX_CHAR_LIMIT,
       concurrency: options.maxParallel,
       retry: DEFAULT_RETRY,
@@ -414,8 +428,7 @@ export async function runCli(
 }
 
 export async function main(argv: readonly string[] = process.argv.slice(2)): Promise<void> {
-  const code = await runCli(argv);
-  process.exitCode = code;
+  process.exitCode = await runCli(argv);
 }
 
 if (require.main === module) {

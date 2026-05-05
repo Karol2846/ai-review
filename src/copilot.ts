@@ -1,5 +1,7 @@
 import { execa } from "execa";
 
+import { LlmProviderError, type LlmProvider, type LlmProviderErrorCode } from "./llmProvider";
+
 type CommandFailure = {
   code?: string;
   shortMessage?: string;
@@ -27,19 +29,29 @@ function isNotAuthenticated(detail: string): boolean {
   return authPattern.test(detail);
 }
 
-export type CopilotServiceErrorCode =
-  | "INVALID_PROMPT"
-  | "COMMAND_NOT_FOUND"
-  | "NOT_AUTHENTICATED"
-  | "COMMAND_FAILED";
+export type CopilotServiceErrorCode = Extract<
+  LlmProviderErrorCode,
+  "INVALID_PROMPT" | "COMMAND_NOT_FOUND" | "NOT_AUTHENTICATED" | "COMMAND_FAILED"
+>;
 
-export class CopilotServiceError extends Error {
-  readonly code: CopilotServiceErrorCode;
-
+export class CopilotServiceError extends LlmProviderError {
   constructor(code: CopilotServiceErrorCode, message: string) {
-    super(message);
+    super(code, message);
     this.name = "CopilotServiceError";
-    this.code = code;
+  }
+}
+
+export type CopilotPromptRunner = (prompt: string) => Promise<string>;
+
+export class CopilotProvider implements LlmProvider {
+  readonly runPrompt: CopilotPromptRunner;
+
+  constructor(runPrompt: CopilotPromptRunner = runCopilotPrompt) {
+    this.runPrompt = runPrompt;
+  }
+
+  sendPrompt(prompt: string): Promise<string> {
+    return this.runPrompt(prompt);
   }
 }
 

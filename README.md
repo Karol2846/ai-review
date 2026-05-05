@@ -1,6 +1,6 @@
 # ai-review 🔍
 
-Multi-agent local code review powered by GitHub Copilot CLI.  
+Multi-agent local code review powered by the Copilot runtime in this MVP.  
 Run **before creating a PR** (or when reviewing someone else's branch) to get focused AI critique from 5 specialized agents — each looking at your diff through a different lens.
 
 ---
@@ -9,7 +9,7 @@ Run **before creating a PR** (or when reviewing someone else's branch) to get fo
 
 | Tool                           | Required | Notes                                         |
 |--------------------------------|----------|-----------------------------------------------|
-| `copilot` (GitHub Copilot CLI) | ✅        | Must be logged in (`/login`)                 |
+| `copilot` (GitHub Copilot CLI) | ⚠️ Optional | Required for AI analysis runs |
 | `git`                          | ✅        | Diff computation                             |
 | `node`                         | ✅        | Runtime for the CLI                          |
 | `npm`                          | ✅        | Package manager                              |
@@ -22,7 +22,7 @@ Run **before creating a PR** (or when reviewing someone else's branch) to get fo
 npm install -g ai-review
 ```
 
-This installs the `ai-review` binary and automatically copies the agent personas and Copilot skill into `~/.copilot/`.
+This installs the `ai-review` binary and also attempts to copy the agent personas and Copilot skill into `~/.copilot/` for Copilot-based workflows.
 
 ---
 
@@ -41,6 +41,10 @@ npm run test
 ```
 
 `npm run test` runs the Vitest suite from `test/` (kept outside production build output).
+
+Current MVP behavior:
+- CLI runtime uses Copilot by default.
+- `ollama` provider code exists in the repository for future extension, but is not exposed as CLI options in this MVP.
 
 ---
 
@@ -135,15 +139,15 @@ Comment syntax per file type:
 
 ```
 -h, --help         Show usage
---base <branch>    Base branch for diff (default: auto-detect main/master)
---agents <list>    Comma-separated agents (default: all 5)
+--base <branch>    Base branch for diff (default: auto-detect)
+--agents <list>    Comma-separated agent list (default: all)
 --severity <min>   Minimum severity: critical, warning, info (default: info)
 --files <glob>     Filter changed files by glob pattern
 --report           Print terminal report (annotations are default)
---clean            Remove all [ai-review] TODO comments
---json             Raw JSON output only (for scripting / CI, no annotations)
---parallel <n>     Max parallel copilot calls (default: 5)
---debug            Show per-agent findings, timings, stderr logs
+--clean            Remove previous [ai-review] TODO comments
+--json             Output raw JSON findings
+--parallel <n>     Max parallel agent invocations (default: 5)
+--debug            Show raw agent output and timings for debugging
 ```
 
 ---

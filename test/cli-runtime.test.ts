@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { runCli, type CliRuntimeDependencies } from "../src/cli";
 import type { AggregatedFinding } from "../src/aggregator";
+import { CopilotProvider } from "../src/copilot";
 import type {
   ReviewPipelineWarning,
   RunReviewPipelineInput,
@@ -274,6 +275,9 @@ describe("runCli runtime flow", () => {
         changedFiles: ["src/service.ts"],
         minSeverity: "warning",
         concurrency: 3,
+        provider: expect.objectContaining({
+          sendPrompt: expect.any(Function),
+        }),
         routingConfig: expect.objectContaining({
           agentGlobs: expect.objectContaining({
             tester: ["**/*.ts"],
@@ -285,6 +289,7 @@ describe("runCli runtime flow", () => {
     const reviewInput = deps.runReviewPipeline.mock.calls[0]?.[0];
     const routedAgents = reviewInput ? Object.keys(reviewInput.routingConfig.agentGlobs).sort() : [];
     expect(routedAgents).toEqual(["architect", "tester"]);
+    expect(reviewInput?.provider).toBeInstanceOf(CopilotProvider);
     expect(deps.writeStdout).toHaveBeenCalledWith(JSON.stringify([finding]));
     expect(deps.renderReport).not.toHaveBeenCalled();
     expect(deps.applyAnnotations).not.toHaveBeenCalled();
