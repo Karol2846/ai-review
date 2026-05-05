@@ -1,7 +1,7 @@
 export { getChangedFiles, getFileDiff, getMergeBase, GitServiceError } from "./git";
 export { CopilotProvider, CopilotServiceError, runCopilotPrompt } from "./copilot";
 export type { CopilotPromptRunner } from "./copilot";
-export { createOllamaProvider, parseOllamaResponseText, normalizeOllamaUrl } from "./providers/ollamaProvider";
+export { createOllamaProvider, parseOllamaResponseText, normalizeOllamaUrl } from "./ollamaProvider";
 export {
   LlmProviderError,
   isTransientLlmProviderError,
@@ -84,7 +84,7 @@ export type {
   ParseInstallProviderConfigResult,
   ResolveInstallProviderConfigResult,
 } from "./installProviderConfig";
-export type { OllamaProviderConfig } from "./providers/ollamaProvider";
+export type { OllamaProviderConfig } from "./ollamaProvider";
 export type {
   ParsedBatchFindings,
   ReviewPipelineMetadata,

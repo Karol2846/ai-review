@@ -4,7 +4,7 @@ import {
   createOllamaProvider,
   DEFAULT_OLLAMA_MODEL,
   DEFAULT_OLLAMA_URL,
-} from "../src/providers/ollamaProvider";
+} from "../src/ollamaProvider";
 
 type MockResponseInput = {
   readonly ok: boolean;

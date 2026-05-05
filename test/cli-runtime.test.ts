@@ -7,7 +7,7 @@ import { runCli, type CliRuntimeDependencies } from "../src/cli";
 import type { AggregatedFinding } from "../src/aggregator";
 import { CopilotProvider } from "../src/copilot";
 import { getInstallProviderConfigPath } from "../src/installProviderConfig";
-import * as ollamaProviderModule from "../src/providers/ollamaProvider";
+import * as ollamaProviderModule from "../src/ollamaProvider";
 import type {
   ReviewPipelineWarning,
   RunReviewPipelineInput,

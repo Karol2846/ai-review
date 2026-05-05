@@ -20,7 +20,7 @@ import {resolveInstallProviderConfig, getInstallProviderConfigPath} from "./inst
 import {loadRoutingConfig, type LoadRoutingConfigResult} from "./config";
 import {getChangedFiles, getMergeBase} from "./git";
 import type {LlmProvider} from "./llmProvider";
-import {createOllamaProvider} from "./providers/ollamaProvider";
+import {createOllamaProvider} from "./ollamaProvider";
 import {renderReport} from "./reporter";
 import {runReviewPipeline, type RunReviewPipelineInput, type RunReviewPipelineResult} from "./reviewPipeline";
 import type {AgentInstructionsByAgent, RunnerRetryConfig} from "./runner";

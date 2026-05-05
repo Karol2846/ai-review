@@ -1,4 +1,6 @@
-import { LlmProviderError, type LlmProvider } from "../llmProvider";
+import { LlmProviderError, type LlmProvider } from "./llmProvider";
+
+//TODO: lepiej niz uzywać lokalnego modelu, tylko zdalnego - np. qwen3-coder:480b-cloud
 
 export interface OllamaProviderConfig {
   readonly url?: string;
