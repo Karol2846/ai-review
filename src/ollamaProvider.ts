@@ -1,6 +1,9 @@
 import { LlmProviderError, type LlmProvider } from "./llmProvider";
 
-//TODO: lepiej niz uzywać lokalnego modelu, tylko zdalnego - np. qwen3-coder:480b-cloud
+//TODO: wokr started - prompt:
+// Hej, w tym projekcie mam @src\ollamaProvider.ts - ten plik służy do komunikacji z lokalną ollamą,
+// ale myślę że lepiej przejść na model chmurowy - qwen3-coder:480b-cloud. api_key mam z zmiennej
+// środowiskowej OLLAMA_API_KEY. Zadaj mi szczegółowe pytania na temat migracji z lokalnej ollamy na chmurowy model
 
 export interface OllamaProviderConfig {
   readonly url?: string;
