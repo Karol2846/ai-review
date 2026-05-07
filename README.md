@@ -7,12 +7,12 @@ Run **before creating a PR** (or when reviewing someone else's branch) to get fo
 
 ## Prerequisites
 
-| Tool                           | Required | Notes                                         |
-|--------------------------------|----------|-----------------------------------------------|
-| `copilot` (GitHub Copilot CLI) | ⚠️ Optional | Required for AI analysis runs |
-| `git`                          | ✅        | Diff computation                             |
-| `node`                         | ✅        | Runtime for the CLI                          |
-| `npm`                          | ✅        | Package manager                              |
+| Tool                           | Required      | Notes                         |
+|--------------------------------|---------------|-------------------------------|
+| `copilot` (GitHub Copilot CLI) | ⚠️ Optional    | Required for AI analysis runs |
+| `git`                          | ✅            | Diff computation              |
+| `node`                         | ✅            | Runtime for the CLI           |
+| `npm`                          | ✅            | Package manager               |
 
 ---
 
@@ -128,7 +128,7 @@ All agents are critical and pragmatic — they name exact classes and methods, a
 
 ### TODO annotation (default)
 ```java
-public class CreatorController {
+public class CreatorController {}
 ```
 
 Comment syntax per file type:
