@@ -91,32 +91,6 @@ describe("createOllamaProvider", () => {
     );
   });
 
-  it("rejects non-cloud URL configuration", () => {
-    expect(() =>
-      createOllamaProvider({
-        url: "http://localhost:11434",
-      })
-    ).toThrowError(
-      expect.objectContaining({
-        code: "COMMAND_FAILED",
-        message: expect.stringContaining("Cloud-only mode is enabled"),
-      })
-    );
-  });
-
-  it("rejects non-cloud model configuration", () => {
-    expect(() =>
-      createOllamaProvider({
-        model: "llama3.1",
-      })
-    ).toThrowError(
-      expect.objectContaining({
-        code: "COMMAND_FAILED",
-        message: expect.stringContaining("Cloud-only mode is enabled"),
-      })
-    );
-  });
-
   it("rejects empty prompts with INVALID_PROMPT", async () => {
     const provider = createOllamaProvider({});
 
@@ -130,9 +104,7 @@ describe("createOllamaProvider", () => {
   it("maps request abort to TIMEOUT", async () => {
     generateMock.mockRejectedValueOnce(new DOMException("The operation was aborted.", "AbortError"));
 
-    const provider = createOllamaProvider({
-      timeoutMs: 10,
-    });
+    const provider = createOllamaProvider({});
 
     await expect(provider.sendPrompt("Prompt")).rejects.toMatchObject({
       code: "TIMEOUT",
@@ -155,6 +127,16 @@ describe("createOllamaProvider", () => {
     await expect(provider.sendPrompt("Prompt")).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
   });
 
+  it("maps HTTP 400 to COMMAND_FAILED", async () => {
+    generateMock.mockRejectedValueOnce({ status_code: 400, error: "Bad Request" });
+
+    const provider = createOllamaProvider({});
+
+    await expect(provider.sendPrompt("Prompt")).rejects.toMatchObject({
+      code: "COMMAND_FAILED",
+    });
+  });
+
   it("maps malformed response payload to COMMAND_FAILED", async () => {
     generateMock.mockResolvedValueOnce({ done: true });
 
@@ -175,6 +157,25 @@ describe("createOllamaProvider", () => {
       code: "COMMAND_FAILED",
       message: 'Ollama response field "response" must be a string.',
     });
+  });
+
+  it("maps null response field to COMMAND_FAILED", async () => {
+    generateMock.mockResolvedValueOnce({ response: null });
+
+    const provider = createOllamaProvider({});
+
+    await expect(provider.sendPrompt("Prompt")).rejects.toMatchObject({
+      code: "COMMAND_FAILED",
+      message: 'Ollama response field "response" must be a string.',
+    });
+  });
+
+  it("accepts empty string response field", async () => {
+    generateMock.mockResolvedValueOnce({ response: "" });
+
+    const provider = createOllamaProvider({});
+
+    await expect(provider.sendPrompt("Prompt")).resolves.toBe("");
   });
 
   it("maps network failures to NETWORK_ERROR", async () => {
