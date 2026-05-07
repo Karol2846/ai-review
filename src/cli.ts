@@ -27,7 +27,7 @@ import type {AgentInstructionsByAgent, RunnerRetryConfig} from "./runner";
 import type {LlmProviderName, RoutingRuntimeConfig} from "./routingTypes";
 
 const DEFAULT_MAX_CHAR_LIMIT = 14_000;
-const DEFAULT_PROVIDER: LlmProviderName = "copilot";
+const DEFAULT_PROVIDER: LlmProviderName = "ollama";
 const DEFAULT_RETRY: RunnerRetryConfig = {
   maxRetries: 1,
   retryDelayMs: 500,

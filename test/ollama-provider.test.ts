@@ -1,117 +1,136 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const { generateMock, ollamaCtorMock } = vi.hoisted(() => ({
+  generateMock: vi.fn(),
+  ollamaCtorMock: vi.fn(),
+}));
+
+vi.mock("ollama", () => {
+  class MockOllama {
+    readonly generate = generateMock;
+
+    constructor(config: unknown) {
+      ollamaCtorMock(config);
+    }
+  }
+
+  return {
+    Ollama: MockOllama,
+  };
+});
+
 import {
   createOllamaProvider,
   DEFAULT_OLLAMA_MODEL,
   DEFAULT_OLLAMA_URL,
 } from "../src/ollamaProvider";
 
-type MockResponseInput = {
-  readonly ok: boolean;
-  readonly status: number;
-  readonly statusText?: string;
-  readonly body: string;
-};
-
-function mockResponse(input: MockResponseInput): Response {
-  return {
-    ok: input.ok,
-    status: input.status,
-    statusText: input.statusText ?? "",
-    text: async () => input.body,
-  } as Response;
-}
-
-const { fetchMock } = vi.hoisted(() => ({
-  fetchMock: vi.fn(),
-}));
+const originalOllamaApiKey = process.env.OLLAMA_API_KEY;
 
 beforeEach(() => {
-  fetchMock.mockReset();
-  vi.stubGlobal("fetch", fetchMock);
+  generateMock.mockReset();
+  ollamaCtorMock.mockReset();
+  process.env.OLLAMA_API_KEY = "env-key";
 });
 
 afterEach(() => {
-  vi.unstubAllGlobals();
+  if (originalOllamaApiKey === undefined) {
+    delete process.env.OLLAMA_API_KEY;
+  } else {
+    process.env.OLLAMA_API_KEY = originalOllamaApiKey;
+  }
 });
 
 describe("createOllamaProvider", () => {
-  it("applies default URL and model when not provided", async () => {
-    fetchMock.mockResolvedValueOnce(
-      mockResponse({
-        ok: true,
-        status: 200,
-        body: JSON.stringify({ response: "Model answer" }),
-      })
-    );
+  it("applies cloud defaults and env API key", async () => {
+    generateMock.mockResolvedValueOnce({ response: "Model answer" });
 
     const provider = createOllamaProvider({});
 
     await expect(provider.sendPrompt("Review this diff")).resolves.toBe("Model answer");
-    expect(fetchMock).toHaveBeenCalledWith(
-      `${DEFAULT_OLLAMA_URL}/api/generate`,
+    expect(ollamaCtorMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        body: JSON.stringify({
-          model: DEFAULT_OLLAMA_MODEL,
-          prompt: "Review this diff",
-          stream: false,
-        }),
+        host: DEFAULT_OLLAMA_URL,
+        headers: {
+          Authorization: "Bearer env-key",
+        },
+        fetch: expect.any(Function),
+      })
+    );
+    expect(generateMock).toHaveBeenCalledWith({
+      model: DEFAULT_OLLAMA_MODEL,
+      prompt: "Review this diff",
+      stream: false,
+    });
+  });
+
+  it("prefers explicit config apiKey over environment value", async () => {
+    generateMock.mockResolvedValueOnce({ response: "Model answer" });
+
+    const provider = createOllamaProvider({
+      apiKey: "config-key",
+    });
+    await expect(provider.sendPrompt("Prompt")).resolves.toBe("Model answer");
+
+    expect(ollamaCtorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        headers: {
+          Authorization: "Bearer config-key",
+        },
       })
     );
   });
 
-  it("returns generated response text on success", async () => {
-    fetchMock.mockResolvedValueOnce(
-      mockResponse({
-        ok: true,
-        status: 200,
-        body: JSON.stringify({ response: "Model answer" }),
+  it("fails fast when OLLAMA_API_KEY is missing", () => {
+    delete process.env.OLLAMA_API_KEY;
+
+    expect(() => createOllamaProvider({})).toThrowError(
+      expect.objectContaining({
+        code: "NOT_AUTHENTICATED",
       })
     );
+  });
 
-    const provider = createOllamaProvider({
-      url: "http://localhost:11434/",
-      model: "llama3.1",
-    });
-
-    await expect(provider.sendPrompt("Review this diff")).resolves.toBe("Model answer");
-    expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost:11434/api/generate",
+  it("rejects non-cloud URL configuration", () => {
+    expect(() =>
+      createOllamaProvider({
+        url: "http://localhost:11434",
+      })
+    ).toThrowError(
       expect.objectContaining({
-        method: "POST",
+        code: "COMMAND_FAILED",
+        message: expect.stringContaining("Cloud-only mode is enabled"),
+      })
+    );
+  });
+
+  it("rejects non-cloud model configuration", () => {
+    expect(() =>
+      createOllamaProvider({
+        model: "llama3.1",
+      })
+    ).toThrowError(
+      expect.objectContaining({
+        code: "COMMAND_FAILED",
+        message: expect.stringContaining("Cloud-only mode is enabled"),
       })
     );
   });
 
   it("rejects empty prompts with INVALID_PROMPT", async () => {
-    const provider = createOllamaProvider({
-      url: "http://localhost:11434",
-      model: "llama3.1",
-    });
+    const provider = createOllamaProvider({});
 
     await expect(provider.sendPrompt("   ")).rejects.toMatchObject({
       code: "INVALID_PROMPT",
       message: "Ollama prompt must not be empty.",
     });
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(generateMock).not.toHaveBeenCalled();
   });
 
   it("maps request abort to TIMEOUT", async () => {
-    fetchMock.mockImplementation((_url: string, init?: RequestInit) => {
-      return new Promise((_resolve, reject) => {
-        init?.signal?.addEventListener(
-          "abort",
-          () => {
-            reject(new DOMException("The operation was aborted.", "AbortError"));
-          },
-          { once: true }
-        );
-      });
-    });
+    generateMock.mockRejectedValueOnce(new DOMException("The operation was aborted.", "AbortError"));
 
     const provider = createOllamaProvider({
-      url: "http://localhost:11434",
-      model: "llama3.1",
       timeoutMs: 10,
     });
 
@@ -121,103 +140,51 @@ describe("createOllamaProvider", () => {
   });
 
   it("maps 401/403/429/5xx statuses to provider error codes", async () => {
-    const provider = createOllamaProvider({
-      url: "http://localhost:11434",
-      model: "llama3.1",
-    });
+    const provider = createOllamaProvider({});
 
-    fetchMock.mockResolvedValueOnce(
-      mockResponse({
-        ok: false,
-        status: 401,
-        statusText: "Unauthorized",
-        body: "",
-      })
-    );
+    generateMock.mockRejectedValueOnce({ status_code: 401, error: "Unauthorized" });
     await expect(provider.sendPrompt("Prompt")).rejects.toMatchObject({ code: "NOT_AUTHENTICATED" });
 
-    fetchMock.mockResolvedValueOnce(
-      mockResponse({
-        ok: false,
-        status: 403,
-        statusText: "Forbidden",
-        body: "",
-      })
-    );
+    generateMock.mockRejectedValueOnce({ status_code: 403, error: "Forbidden" });
     await expect(provider.sendPrompt("Prompt")).rejects.toMatchObject({ code: "NOT_AUTHENTICATED" });
 
-    fetchMock.mockResolvedValueOnce(
-      mockResponse({
-        ok: false,
-        status: 429,
-        statusText: "Too Many Requests",
-        body: "",
-      })
-    );
+    generateMock.mockRejectedValueOnce({ status_code: 429, error: "Too Many Requests" });
     await expect(provider.sendPrompt("Prompt")).rejects.toMatchObject({ code: "RATE_LIMITED" });
 
-    fetchMock.mockResolvedValueOnce(
-      mockResponse({
-        ok: false,
-        status: 503,
-        statusText: "Service Unavailable",
-        body: "",
-      })
-    );
+    generateMock.mockRejectedValueOnce({ status_code: 503, error: "Service Unavailable" });
     await expect(provider.sendPrompt("Prompt")).rejects.toMatchObject({ code: "SERVICE_UNAVAILABLE" });
   });
 
   it("maps malformed response payload to COMMAND_FAILED", async () => {
-    fetchMock.mockResolvedValueOnce(
-      mockResponse({
-        ok: true,
-        status: 200,
-        body: "not-json",
-      })
-    );
+    generateMock.mockResolvedValueOnce({ done: true });
 
-    const provider = createOllamaProvider({
-      url: "http://localhost:11434",
-      model: "llama3.1",
-    });
-
-    await expect(provider.sendPrompt("Prompt")).rejects.toMatchObject({
-      code: "COMMAND_FAILED",
-      message: "Ollama returned a non-JSON response body.",
-    });
-  });
-
-  it("maps network failures to NETWORK_ERROR", async () => {
-    fetchMock.mockRejectedValueOnce(new Error("connect ECONNREFUSED 127.0.0.1:11434"));
-
-    const provider = createOllamaProvider({
-      url: "http://localhost:11434",
-      model: "llama3.1",
-    });
-
-    await expect(provider.sendPrompt("Prompt")).rejects.toMatchObject({
-      code: "NETWORK_ERROR",
-      message: expect.stringContaining("ECONNREFUSED"),
-    });
-  });
-
-  it("maps JSON without response field to COMMAND_FAILED", async () => {
-    fetchMock.mockResolvedValueOnce(
-      mockResponse({
-        ok: true,
-        status: 200,
-        body: JSON.stringify({ done: true }),
-      })
-    );
-
-    const provider = createOllamaProvider({
-      url: "http://localhost:11434",
-      model: "llama3.1",
-    });
+    const provider = createOllamaProvider({});
 
     await expect(provider.sendPrompt("Prompt")).rejects.toMatchObject({
       code: "COMMAND_FAILED",
       message: 'Ollama response is missing required "response" field.',
+    });
+  });
+
+  it("maps non-string response field to COMMAND_FAILED", async () => {
+    generateMock.mockResolvedValueOnce({ response: 123 });
+
+    const provider = createOllamaProvider({});
+
+    await expect(provider.sendPrompt("Prompt")).rejects.toMatchObject({
+      code: "COMMAND_FAILED",
+      message: 'Ollama response field "response" must be a string.',
+    });
+  });
+
+  it("maps network failures to NETWORK_ERROR", async () => {
+    generateMock.mockRejectedValueOnce(new Error("connect ECONNREFUSED 127.0.0.1:443"));
+
+    const provider = createOllamaProvider({});
+
+    await expect(provider.sendPrompt("Prompt")).rejects.toMatchObject({
+      code: "NETWORK_ERROR",
+      message: expect.stringContaining("ECONNREFUSED"),
     });
   });
 });

@@ -1,9 +1,6 @@
-import { LlmProviderError, type LlmProvider } from "./llmProvider";
+import { Ollama } from "ollama";
 
-//TODO: wokr started - prompt:
-// Hej, w tym projekcie mam @src\ollamaProvider.ts - ten plik służy do komunikacji z lokalną ollamą,
-// ale myślę że lepiej przejść na model chmurowy - qwen3-coder:480b-cloud. api_key mam z zmiennej
-// środowiskowej OLLAMA_API_KEY. Zadaj mi szczegółowe pytania na temat migracji z lokalnej ollamy na chmurowy model
+import { LlmProviderError, type LlmProvider } from "./llmProvider";
 
 export interface OllamaProviderConfig {
   readonly url?: string;
@@ -16,9 +13,16 @@ interface OllamaGenerateResponse {
   readonly response?: unknown;
 }
 
-const DEFAULT_TIMEOUT_MS = 30_000;
-export const DEFAULT_OLLAMA_URL = "http://localhost:11434";
-export const DEFAULT_OLLAMA_MODEL = "qwen3.6:27b";
+interface OllamaResponseErrorShape {
+  readonly status_code: number;
+  readonly error?: unknown;
+  readonly message?: unknown;
+}
+
+const OLLAMA_API_KEY_ENV = "OLLAMA_API_KEY";
+const DEFAULT_TIMEOUT_MS = 60_000;
+export const DEFAULT_OLLAMA_URL = "https://ollama.com";
+export const DEFAULT_OLLAMA_MODEL = "qwen3-coder:480b-cloud";
 
 function validateStringField(value: string, fieldName: string): string {
   const trimmed = value.trim();
@@ -49,10 +53,6 @@ export function normalizeOllamaUrl(url: string): string {
   return parsed.toString().replace(/\/+$/u, "");
 }
 
-function buildGenerateEndpoint(baseUrl: string): string {
-  return `${baseUrl}/api/generate`;
-}
-
 function normalizeTimeout(timeoutMs: number | undefined): number {
   if (timeoutMs === undefined) {
     return DEFAULT_TIMEOUT_MS;
@@ -68,8 +68,9 @@ function normalizeTimeout(timeoutMs: number | undefined): number {
   return timeoutMs;
 }
 
-function toStatusFailure(status: number, statusText: string): LlmProviderError {
-  const detail = statusText.trim().length > 0 ? `${status} ${statusText}` : `${status}`;
+function toStatusFailure(status: number, detailMessage: string | undefined): LlmProviderError {
+  const normalizedDetail = detailMessage?.trim();
+  const detail = normalizedDetail && normalizedDetail.length > 0 ? `${status}: ${normalizedDetail}` : `${status}`;
 
   if (status === 401 || status === 403) {
     return new LlmProviderError("NOT_AUTHENTICATED", `Ollama request was not authenticated (${detail}).`);
@@ -98,6 +99,111 @@ function isAbortLikeError(error: unknown): boolean {
   );
 }
 
+function isOllamaResponseError(error: unknown): error is OllamaResponseErrorShape {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "status_code" in error &&
+    typeof (error as { status_code?: unknown }).status_code === "number"
+  );
+}
+
+function normalizeConfiguredCloudUrl(url: string | undefined): string {
+  const configured = normalizeOllamaUrl(url ?? DEFAULT_OLLAMA_URL);
+  const cloud = normalizeOllamaUrl(DEFAULT_OLLAMA_URL);
+  if (configured !== cloud) {
+    throw new LlmProviderError(
+      "COMMAND_FAILED",
+      `Cloud-only mode is enabled. URL must be "${cloud}", received "${configured}".`
+    );
+  }
+  return cloud;
+}
+
+function normalizeConfiguredCloudModel(model: string | undefined): string {
+  const configured = validateStringField(model ?? DEFAULT_OLLAMA_MODEL, "model");
+  if (configured !== DEFAULT_OLLAMA_MODEL) {
+    throw new LlmProviderError(
+      "COMMAND_FAILED",
+      `Cloud-only mode is enabled. Model must be "${DEFAULT_OLLAMA_MODEL}", received "${configured}".`
+    );
+  }
+  return configured;
+}
+
+function resolveApiKey(configApiKey: string | undefined): string {
+  if (configApiKey !== undefined) {
+    return validateStringField(configApiKey, "apiKey");
+  }
+
+  const envValue = process.env[OLLAMA_API_KEY_ENV];
+  if (typeof envValue === "string" && envValue.trim().length > 0) {
+    return envValue.trim();
+  }
+
+  throw new LlmProviderError(
+    "NOT_AUTHENTICATED",
+    `Missing required environment variable "${OLLAMA_API_KEY_ENV}" for Ollama Cloud authentication.`
+  );
+}
+
+function createTimeoutFetch(timeoutMs: number): typeof fetch {
+  return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const controller = new AbortController();
+    const upstreamSignal = init?.signal;
+    const abortFromUpstream = () => {
+      controller.abort();
+    };
+
+    if (upstreamSignal) {
+      if (upstreamSignal.aborted) {
+        controller.abort();
+      } else {
+        upstreamSignal.addEventListener("abort", abortFromUpstream, { once: true });
+      }
+    }
+
+    const timer = setTimeout(() => {
+      controller.abort();
+    }, timeoutMs);
+
+    try {
+      return await fetch(input, {
+        ...init,
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+      upstreamSignal?.removeEventListener("abort", abortFromUpstream);
+    }
+  };
+}
+
+function parseOllamaGenerateResponse(raw: unknown): string {
+  if (typeof raw !== "object" || raw === null || !("response" in raw)) {
+    throw new LlmProviderError("COMMAND_FAILED", 'Ollama response is missing required "response" field.');
+  }
+
+  const response = (raw as OllamaGenerateResponse).response;
+  if (typeof response !== "string") {
+    throw new LlmProviderError("COMMAND_FAILED", 'Ollama response field "response" must be a string.');
+  }
+
+  return response;
+}
+
+function toResponseErrorMessage(error: OllamaResponseErrorShape): string | undefined {
+  if (typeof error.error === "string" && error.error.trim().length > 0) {
+    return error.error;
+  }
+
+  if (typeof error.message === "string" && error.message.trim().length > 0) {
+    return error.message;
+  }
+
+  return undefined;
+}
+
 export function parseOllamaResponseText(rawBody: string): string {
   let parsed: OllamaGenerateResponse;
   try {
@@ -118,11 +224,17 @@ export function parseOllamaResponseText(rawBody: string): string {
 }
 
 export function createOllamaProvider(config: OllamaProviderConfig = {}): LlmProvider {
-  const baseUrl = normalizeOllamaUrl(config.url ?? DEFAULT_OLLAMA_URL);
-  const model = validateStringField(config.model ?? DEFAULT_OLLAMA_MODEL, "model");
+  const baseUrl = normalizeConfiguredCloudUrl(config.url);
+  const model = normalizeConfiguredCloudModel(config.model);
   const timeoutMs = normalizeTimeout(config.timeoutMs);
-  const endpoint = buildGenerateEndpoint(baseUrl);
-  const apiKey = config.apiKey?.trim();
+  const apiKey = resolveApiKey(config.apiKey);
+  const client = new Ollama({
+    host: baseUrl,
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+    },
+    fetch: createTimeoutFetch(timeoutMs),
+  });
 
   return {
     async sendPrompt(prompt: string): Promise<string> {
@@ -130,52 +242,31 @@ export function createOllamaProvider(config: OllamaProviderConfig = {}): LlmProv
         throw new LlmProviderError("INVALID_PROMPT", "Ollama prompt must not be empty.");
       }
 
-      const controller = new AbortController();
-      const timer = setTimeout(() => {
-        controller.abort();
-      }, timeoutMs);
-
       try {
-        const response = await fetch(endpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-            ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
-          },
-          body: JSON.stringify({
-            model,
-            prompt,
-            stream: false,
-          }),
-          signal: controller.signal,
+        const response = await client.generate({
+          model,
+          prompt,
+          stream: false,
         });
-
-        if (!response.ok) {
-          throw toStatusFailure(response.status, response.statusText);
-        }
-
-        const responseText = await response.text();
-        return parseOllamaResponseText(responseText);
+        return parseOllamaGenerateResponse(response);
       } catch (error) {
         if (error instanceof LlmProviderError) {
           throw error;
         }
 
+        if (isOllamaResponseError(error)) {
+          throw toStatusFailure(error.status_code, toResponseErrorMessage(error));
+        }
+
         if (isAbortLikeError(error)) {
           throw new LlmProviderError(
             "TIMEOUT",
-            `Ollama request timed out after ${timeoutMs}ms while calling ${endpoint}.`
+            `Ollama request timed out after ${timeoutMs}ms while calling ${baseUrl}.`
           );
         }
 
         const detail = error instanceof Error ? error.message : "Unknown network failure.";
-        throw new LlmProviderError(
-          "NETWORK_ERROR",
-          `Failed to reach Ollama endpoint ${endpoint}: ${detail}`
-        );
-      } finally {
-        clearTimeout(timer);
+        throw new LlmProviderError("NETWORK_ERROR", `Failed to reach Ollama endpoint ${baseUrl}: ${detail}`);
       }
     },
   };

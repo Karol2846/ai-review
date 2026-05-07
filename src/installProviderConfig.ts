@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 
 export const INSTALL_PROVIDER_CONFIG_FILE_NAME = ".ai-review-install-provider.json";
 export const INSTALL_PROVIDER_TYPES = ["copilot", "ollama"] as const;
-export const DEFAULT_INSTALL_PROVIDER = "copilot";
+export const DEFAULT_INSTALL_PROVIDER = "ollama";
 
 export type InstallProviderType = (typeof INSTALL_PROVIDER_TYPES)[number];
 

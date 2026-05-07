@@ -26,7 +26,7 @@ This installs the `ai-review` binary and also attempts to copy the agent persona
 
 During install, a postinstall prompt lets you choose a default provider: `copilot` or `ollama`.
 - Interactive install: prompts and writes the choice to `.ai-review-install-provider.json` in the install directory.
-- Non-interactive install: defaults to `copilot`.
+- Non-interactive install: defaults to `ollama`.
 
 ---
 
@@ -50,7 +50,9 @@ Current MVP behavior:
 - Provider selection is install-time only (`copilot` or `ollama`).
 - No CLI provider flags/options are available in this MVP.
 - Runtime reads `.ai-review-install-provider.json` from the install directory.
-- If config is missing/invalid, runtime falls back to `copilot`.
+- If config is missing/invalid, runtime falls back to `ollama`.
+- `ollama` mode uses Ollama Cloud (`https://ollama.com`) with model `qwen3-coder:480b-cloud`.
+- `OLLAMA_API_KEY` is required in the environment for `ollama` mode.
 
 ---
 
@@ -126,7 +128,6 @@ All agents are critical and pragmatic — they name exact classes and methods, a
 
 ### TODO annotation (default)
 ```java
-// TODO architect critical: No @ControllerAdvice found. → Add @RestControllerAdvice. [ai-review]
 public class CreatorController {
 ```
 

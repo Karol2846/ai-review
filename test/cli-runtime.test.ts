@@ -16,6 +16,7 @@ import type {
 import type { RoutingRuntimeConfig } from "../src/routingTypes";
 
 const installProviderConfigPath = getInstallProviderConfigPath(resolve(process.cwd(), "src"));
+const originalOllamaApiKey = process.env.OLLAMA_API_KEY;
 
 function removeInstallProviderConfig(): void {
   rmSync(installProviderConfigPath, { force: true });
@@ -199,10 +200,16 @@ function createRuntimeDeps(): RuntimeTestDeps {
 beforeEach(() => {
   vi.restoreAllMocks();
   removeInstallProviderConfig();
+  process.env.OLLAMA_API_KEY = "test-ollama-key";
 });
 
 afterEach(() => {
   removeInstallProviderConfig();
+  if (originalOllamaApiKey === undefined) {
+    delete process.env.OLLAMA_API_KEY;
+  } else {
+    process.env.OLLAMA_API_KEY = originalOllamaApiKey;
+  }
 });
 
 describe("runCli runtime flow", () => {
@@ -306,7 +313,11 @@ describe("runCli runtime flow", () => {
     const reviewInput = deps.runReviewPipeline.mock.calls[0]?.[0];
     const routedAgents = reviewInput ? Object.keys(reviewInput.routingConfig.agentGlobs).sort() : [];
     expect(routedAgents).toEqual(["architect", "tester"]);
-    expect(reviewInput?.provider).toBeInstanceOf(CopilotProvider);
+    expect(reviewInput?.provider).toEqual(
+      expect.objectContaining({
+        sendPrompt: expect.any(Function),
+      })
+    );
     expect(deps.writeStdout).toHaveBeenCalledWith(JSON.stringify([finding]));
     expect(deps.renderReport).not.toHaveBeenCalled();
     expect(deps.applyAnnotations).not.toHaveBeenCalled();
@@ -343,23 +354,25 @@ describe("runCli runtime flow", () => {
     expect(reviewInput?.provider).toBeInstanceOf(CopilotProvider);
   });
 
-  it("falls back to Copilot provider when install config is missing or invalid", async () => {
-    const createOllamaProviderSpy = vi.spyOn(ollamaProviderModule, "createOllamaProvider");
+  it("falls back to Ollama provider when install config is missing or invalid", async () => {
+    const fallbackOllamaProvider = {
+      sendPrompt: vi.fn().mockResolvedValue("ok"),
+    };
+    const createOllamaProviderSpy = vi
+      .spyOn(ollamaProviderModule, "createOllamaProvider")
+      .mockReturnValue(fallbackOllamaProvider);
 
     const depsMissingConfig = createRuntimeDeps();
     const missingConfigExitCode = await runCli(["--json"], depsMissingConfig.overrides);
     expect(missingConfigExitCode).toBe(0);
-    expect(depsMissingConfig.runReviewPipeline.mock.calls[0]?.[0]?.provider).toBeInstanceOf(CopilotProvider);
+    expect(depsMissingConfig.runReviewPipeline.mock.calls[0]?.[0]?.provider).toBe(fallbackOllamaProvider);
 
     const depsInvalidConfig = createRuntimeDeps();
     writeInstallProviderConfig('{ "provider": "unsupported" }');
     const invalidConfigExitCode = await runCli(["--json"], depsInvalidConfig.overrides);
     expect(invalidConfigExitCode).toBe(0);
-    expect(depsInvalidConfig.runReviewPipeline.mock.calls[0]?.[0]?.provider).toBeInstanceOf(
-      CopilotProvider
-    );
-
-    expect(createOllamaProviderSpy).not.toHaveBeenCalled();
+    expect(depsInvalidConfig.runReviewPipeline.mock.calls[0]?.[0]?.provider).toBe(fallbackOllamaProvider);
+    expect(createOllamaProviderSpy).toHaveBeenCalledTimes(2);
   });
 
   it("returns empty JSON when no files remain after --files filter", async () => {

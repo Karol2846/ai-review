@@ -16,7 +16,7 @@ const DIM = "\x1b[2m";
 
 const INSTALL_PROVIDER_CONFIG_FILE_NAME = ".ai-review-install-provider.json";
 const INSTALL_PROVIDER_TYPES = ["copilot", "ollama"];
-const DEFAULT_INSTALL_PROVIDER = "copilot";
+const DEFAULT_INSTALL_PROVIDER = "ollama";
 
 function log(msg) {
   process.stdout.write(msg + "\n");
@@ -53,12 +53,12 @@ function parseProviderSelection(input) {
     .trim()
     .toLowerCase();
 
-  if (normalized === "" || normalized === "1" || normalized === "copilot") {
-    return "copilot";
+  if (normalized === "" || normalized === "1" || normalized === "ollama") {
+    return "ollama";
   }
 
-  if (normalized === "2" || normalized === "ollama") {
-    return "ollama";
+  if (normalized === "2" || normalized === "copilot") {
+    return "copilot";
   }
 
   return null;
@@ -79,8 +79,8 @@ async function selectInstallProvider() {
   }
 
   log("\nChoose the default ai-review provider:");
-  log(`  ${DIM}1) copilot (default)${RESET}`);
-  log(`  ${DIM}2) ollama${RESET}`);
+  log(`  ${DIM}1) ollama (default, cloud; requires OLLAMA_API_KEY)${RESET}`);
+  log(`  ${DIM}2) copilot${RESET}`);
 
   const rl = readline.createInterface({
     input: process.stdin,
