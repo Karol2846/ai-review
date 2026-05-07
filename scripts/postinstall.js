@@ -39,15 +39,6 @@ function copyDir(src, dest) {
   }
 }
 
-function isInteractiveInstall() {
-  if (!process.stdin.isTTY || !process.stdout.isTTY) {
-    return false;
-  }
-
-  const ciValue = String(process.env.CI ?? "").trim().toLowerCase();
-  return ciValue !== "true" && ciValue !== "1";
-}
-
 function parseProviderSelection(input) {
   const normalized = String(input ?? "")
     .trim()
@@ -71,13 +62,6 @@ function askQuestion(rl, question) {
 }
 
 async function selectInstallProvider() {
-  if (!isInteractiveInstall()) {
-    log(
-      `  ${DIM}No interactive terminal detected (or CI). Using default provider "${DEFAULT_INSTALL_PROVIDER}".${RESET}`
-    );
-    return DEFAULT_INSTALL_PROVIDER;
-  }
-
   log("\nChoose the default ai-review provider:");
   log(`  ${DIM}1) ollama (default, cloud; requires OLLAMA_API_KEY)${RESET}`);
   log(`  ${DIM}2) copilot${RESET}`);

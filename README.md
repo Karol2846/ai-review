@@ -24,9 +24,7 @@ npm install -g ai-review
 
 This installs the `ai-review` binary and also attempts to copy the agent personas and Copilot skill into `~/.copilot/` for Copilot-based workflows.
 
-During install, a postinstall prompt lets you choose a default provider: `copilot` or `ollama`.
-- Interactive install: prompts and writes the choice to `.ai-review-install-provider.json` in the install directory.
-- Non-interactive install: defaults to `ollama`.
+During install, a prompt asks you to choose a default provider: `copilot` or `ollama`. The choice is written to `.ai-review-install-provider.json` in the install directory.
 
 ---
 
