@@ -169,4 +169,34 @@ describe("aggregateFindings", () => {
       })
     ).toThrowError(/Unsupported minSeverity/u);
   });
+
+  it("returns empty findings and zero counts for an empty batches array", () => {
+    const result = aggregateFindings({ minSeverity: "info", batches: [] });
+
+    expect(result.findings).toEqual([]);
+    expect(result.metadata).toMatchObject({
+      inputFindingCount: 0,
+      findingsAfterSeverityFilter: 0,
+      filteredOutBySeverity: 0,
+      filteredOutByUnknownSeverity: 0,
+      countsBySeverity: { critical: 0, warning: 0, info: 0 },
+    });
+    expect(result.metadata.dedup).toMatchObject({
+      totalBeforeDedup: 0,
+      totalAfterDedup: 0,
+      duplicatesRemoved: 0,
+      collisionGroupCount: 0,
+    });
+  });
+
+  it("increments filteredOutByUnknownSeverity for unrecognized severity values", () => {
+    const result = aggregateFindings({
+      minSeverity: "info",
+      batches: [[createFinding({ severity: "notice" })]],
+    });
+
+    expect(result.findings).toEqual([]);
+    expect(result.metadata.inputFindingCount).toBe(1);
+    expect(result.metadata.filteredOutByUnknownSeverity).toBe(1);
+  });
 });

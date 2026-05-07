@@ -90,6 +90,22 @@ describe("parseCliArgs", () => {
   it("throws for empty or whitespace --agents list", () => {
     expectCliArgsError(["--agents", " ,  , "], /"--agents" must include at least one non-empty value/u);
   });
+
+  it("throws for unknown flag", () => {
+    expectCliArgsError(["--unknown-flag"], /unknown/iu);
+  });
+
+  it("throws for --parallel with decimal value", () => {
+    expectCliArgsError(["--parallel", "1.5"], /"--parallel" must be a positive integer/u);
+  });
+
+  it("throws for --parallel with NaN", () => {
+    expectCliArgsError(["--parallel", "NaN"], /"--parallel" must be a positive integer/u);
+  });
+
+  it("throws for --agents with comma-only value", () => {
+    expectCliArgsError(["--agents", ","], /"--agents" must include at least one non-empty value/u);
+  });
 });
 
 describe("formatCliUsage", () => {

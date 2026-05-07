@@ -11,8 +11,19 @@ vi.mock("../src/git", () => ({
   getFileDiff: vi.fn(),
 }));
 
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return {
+    ...actual,
+    readFile: vi.fn().mockImplementation(actual.readFile),
+  };
+});
+
+import { readFile } from "node:fs/promises";
+
 const mockedGetChangedFiles = vi.mocked(getChangedFiles);
 const mockedGetFileDiff = vi.mocked(getFileDiff);
+const mockedReadFile = vi.mocked(readFile);
 
 const FIXTURES_ROOT = join(process.cwd(), ".context-builder-fixtures");
 
@@ -32,9 +43,12 @@ afterAll(() => {
   rmSync(FIXTURES_ROOT, { recursive: true, force: true });
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   mockedGetChangedFiles.mockReset();
   mockedGetFileDiff.mockReset();
+  const { readFile: realReadFile } =
+    await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+  mockedReadFile.mockImplementation(realReadFile);
 });
 
 describe("buildFileContexts", () => {
@@ -109,6 +123,46 @@ describe("buildFileContexts", () => {
     });
     expect(result.warnings[0]?.message).toContain("could not be read");
     expect(mockedGetFileDiff).not.toHaveBeenCalled();
+  });
+
+  it("emits FILE_READ_FAILED warning on EACCES (permission denied)", async () => {
+    const fixtureRoot = recreateFixtureDir("eacces");
+    mockedGetChangedFiles.mockResolvedValue(["src/secret.ts"]);
+    mockedReadFile.mockRejectedValueOnce(
+      Object.assign(new Error("permission denied"), { code: "EACCES" })
+    );
+
+    const result = await buildFileContexts(fixtureRoot, "base-sha");
+
+    expect(result.contexts).toEqual([]);
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toMatchObject({
+      filePath: "src/secret.ts",
+      code: "FILE_READ_FAILED",
+    });
+    expect(result.warnings[0]?.message).toContain("could not be read");
+    expect(mockedGetFileDiff).not.toHaveBeenCalled();
+  });
+
+  it("builds context with empty fullContent for a zero-byte file", async () => {
+    const fixtureRoot = recreateFixtureDir("empty-file");
+    const filePath = "src/empty.ts";
+
+    mkdirSync(join(fixtureRoot, "src"), { recursive: true });
+    writeFileSync(join(fixtureRoot, filePath), "", "utf8");
+
+    mockedGetChangedFiles.mockResolvedValue([filePath]);
+    mockedGetFileDiff.mockResolvedValue("");
+
+    const result = await buildFileContexts(fixtureRoot, "base-sha");
+
+    expect(result.warnings).toEqual([]);
+    expect(result.contexts).toHaveLength(1);
+    expect(result.contexts[0]).toMatchObject({
+      filePath,
+      fullContent: "",
+      gitDiff: "",
+    });
   });
 
   it("assembles contexts for supported files that can be read", async () => {

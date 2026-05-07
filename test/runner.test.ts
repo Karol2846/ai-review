@@ -157,4 +157,97 @@ describe("runAgentBatches", () => {
     });
     expect(result.summary.errorCount).toBe(1);
   });
+
+  it("throws for concurrency: 0", async () => {
+    await expect(
+      runAgentBatches({
+        batches: [createBatch("b")],
+        agentInstructions: { architect: "Review." },
+        provider,
+        concurrency: 0,
+        retry: { maxRetries: 0, retryDelayMs: 0 },
+      })
+    ).rejects.toThrow(/"concurrency" must be a positive integer/u);
+    expect(sendPromptMock).not.toHaveBeenCalled();
+  });
+
+  it("throws for concurrency: 1.5", async () => {
+    await expect(
+      runAgentBatches({
+        batches: [createBatch("b")],
+        agentInstructions: { architect: "Review." },
+        provider,
+        concurrency: 1.5,
+        retry: { maxRetries: 0, retryDelayMs: 0 },
+      })
+    ).rejects.toThrow(/"concurrency" must be a positive integer/u);
+  });
+
+  it("throws for maxRetries: -1", async () => {
+    await expect(
+      runAgentBatches({
+        batches: [createBatch("b")],
+        agentInstructions: { architect: "Review." },
+        provider,
+        concurrency: 1,
+        retry: { maxRetries: -1, retryDelayMs: 0 },
+      })
+    ).rejects.toThrow(/"retry.maxRetries" must be a non-negative integer/u);
+  });
+
+  it("throws for retryDelayMs: -1", async () => {
+    await expect(
+      runAgentBatches({
+        batches: [createBatch("b")],
+        agentInstructions: { architect: "Review." },
+        provider,
+        concurrency: 1,
+        retry: { maxRetries: 0, retryDelayMs: -1 },
+      })
+    ).rejects.toThrow(/"retry.retryDelayMs" must be a non-negative finite number/u);
+  });
+
+  it("maxRetries: 0 succeeds on first attempt without retrying", async () => {
+    sendPromptMock.mockResolvedValueOnce("output");
+
+    const result = await runAgentBatches({
+      batches: [createBatch("batch-once")],
+      agentInstructions: { architect: "Review." },
+      provider,
+      concurrency: 1,
+      retry: { maxRetries: 0, retryDelayMs: 0 },
+    });
+
+    expect(sendPromptMock).toHaveBeenCalledTimes(1);
+    expect(result.successes[0]).toMatchObject({
+      batchId: "batch-once",
+      status: "success",
+      attemptCount: 1,
+      retryCount: 0,
+      rawOutput: "output",
+    });
+  });
+
+  it("maxRetries: 0 records transient failure without retrying", async () => {
+    sendPromptMock.mockRejectedValueOnce(new LlmProviderError("RATE_LIMITED", "rate limited"));
+
+    const result = await runAgentBatches({
+      batches: [createBatch("batch-no-retry")],
+      agentInstructions: { architect: "Review." },
+      provider,
+      concurrency: 1,
+      retry: { maxRetries: 0, retryDelayMs: 0 },
+    });
+
+    expect(sendPromptMock).toHaveBeenCalledTimes(1);
+    expect(result.failures[0]).toMatchObject({
+      batchId: "batch-no-retry",
+      code: "RATE_LIMITED",
+      isTransient: true,
+      attemptCount: 1,
+      retryCount: 0,
+    });
+    expect(result.summary.warningCount).toBe(1);
+    expect(result.summary.errorCount).toBe(0);
+  });
 });
