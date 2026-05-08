@@ -372,7 +372,7 @@ export async function runCli(
     );
     debugWarnings.push(...instructionsResult.warnings);
     const resolvedProvider = await resolveProviderConfig();
-    debugWarnings.push(`Using provider "${resolvedProvider.providerName}".`);
+    deps.writeStderr(`Using provider "${resolvedProvider.providerName}".`);
 
     const reviewResult = await deps.runReviewPipeline({
       repoRootPath,
@@ -385,6 +385,7 @@ export async function runCli(
       concurrency: options.maxParallel,
       retry: DEFAULT_RETRY,
       minSeverity: options.minSeverity,
+      onProgress: (msg) => deps.writeStderr(msg),
     });
 
     for (const warning of reviewResult.warnings) {
@@ -419,11 +420,9 @@ export async function runCli(
 
     if (options.annotate) {
       const annotationResult = await deps.applyAnnotations(reviewResult.findings, repoRootPath);
-      if (options.debug) {
-        deps.writeStderr(
-          `Applied ${annotationResult.appliedCount} annotations in ${annotationResult.changedFiles.length} files.`
-        );
-      }
+      deps.writeStderr(
+        `Applied ${annotationResult.appliedCount} annotations in ${annotationResult.changedFiles.length} files.`
+      );
     }
 
     return 0;

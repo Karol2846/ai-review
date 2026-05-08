@@ -41,6 +41,7 @@ export interface RunReviewPipelineInput {
   readonly concurrency: number;
   readonly retry: RunnerRetryConfig;
   readonly minSeverity: FindingSeverity;
+  readonly onProgress?: (message: string) => void;
 }
 
 export interface ParsedBatchFindings {
@@ -185,6 +186,13 @@ export async function runReviewPipeline(
   const contextFilePaths = contextResult.contexts.map((context) => context.filePath);
 
   const routedFilesByAgent = routeFilesToAgents(contextFilePaths, input.routingConfig);
+
+  for (const [agent, files] of Object.entries(routedFilesByAgent)) {
+    if (files.length > 0) {
+      input.onProgress?.(`${agent}: analyzing ${files.length} file${files.length === 1 ? "" : "s"}...`);
+    }
+  }
+
   const batchesResult = createBatches(
     routedFilesByAgent,
     toFileContextMap(contextResult.contexts),

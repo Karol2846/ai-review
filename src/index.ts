@@ -103,3 +103,7 @@ export type {
   ApplyAnnotationsResult,
   CleanAnnotationsResult,
 } from "./annotator";
+
+//FIXME: the problem is, that ollama allows to only one usage at the time - so 5 parallel agents is impossible.
+// I'm looking for alternative solution: https://gemini.google.com/app/ac85cf3fca95c7f8?hl=pl  ;  https://claude.ai/chat/3dfa9adf-bb50-4854-88fa-22aacb1c1517
+
