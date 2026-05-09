@@ -1,9 +1,11 @@
 import pMap from "p-map";
+import type { LanguageModel } from "ai";
 
 import type { AgentBatch } from "./batcher";
+import { generateFindings } from "./llmAdapter";
+import type { Finding } from "./findingSchema";
 import {
   LlmProviderError,
-  type LlmProvider,
   type LlmProviderErrorCode,
   isTransientLlmProviderErrorCode,
 } from "./llmProvider";
@@ -24,7 +26,7 @@ type AgentInstructionsRecord = Readonly<Record<string, string>>;
 export interface RunAgentBatchesInput {
   readonly batches: readonly AgentBatch[];
   readonly agentInstructions: AgentInstructionsByAgent;
-  readonly provider: LlmProvider;
+  readonly model: LanguageModel;
   readonly concurrency: number;
   readonly retry: RunnerRetryConfig;
 }
@@ -43,7 +45,7 @@ export interface BatchRunSuccess {
   readonly totalBatches: number;
   readonly attemptCount: number;
   readonly retryCount: number;
-  readonly rawOutput: string;
+  readonly findings: readonly Finding[];
 }
 
 export interface BatchRunFailure {
@@ -189,7 +191,7 @@ function validateInput(input: RunAgentBatchesInput): void {
 async function runSingleBatch(
   batch: AgentBatch,
   agentInstructions: AgentInstructionsByAgent,
-  provider: LlmProvider,
+  model: LanguageModel,
   retry: RunnerRetryConfig
 ): Promise<BatchRunResult> {
   const rawAgentInstruction = readAgentInstruction(agentInstructions, batch.agent);
@@ -220,7 +222,7 @@ async function runSingleBatch(
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      const rawOutput = await provider.sendPrompt(prompt);
+      const findings = await generateFindings(model, prompt);
       return {
         status: "success",
         batchId: batch.id,
@@ -229,7 +231,7 @@ async function runSingleBatch(
         totalBatches: batch.totalBatches,
         attemptCount: attempt,
         retryCount: attempt - 1,
-        rawOutput,
+        findings,
       };
     } catch (error) {
       const failure = normalizeFailure(error);
@@ -290,7 +292,7 @@ export async function runAgentBatches(input: RunAgentBatchesInput): Promise<RunA
 
   const results = await pMap(
     input.batches,
-    async (batch) => runSingleBatch(batch, input.agentInstructions, input.provider, input.retry),
+    async (batch) => runSingleBatch(batch, input.agentInstructions, input.model, input.retry),
     { concurrency: input.concurrency }
   );
 

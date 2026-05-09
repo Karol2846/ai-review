@@ -1,13 +1,13 @@
 import { createHash } from "node:crypto";
 
-import type { ParsedFinding } from "./responseParser";
+import type { Finding } from "./findingSchema";
 
 const SEVERITY_ORDER = ["critical", "warning", "info"] as const;
 const FINGERPRINT_VERSION = "v2";
 
 export type FindingSeverity = (typeof SEVERITY_ORDER)[number];
 
-export interface AggregatedFinding extends Omit<ParsedFinding, "severity"> {
+export interface AggregatedFinding extends Omit<Finding, "severity" | "fingerprint"> {
   readonly severity: FindingSeverity;
   readonly fingerprint: string;
 }
@@ -41,7 +41,7 @@ export interface AggregationMetadata {
 }
 
 export interface AggregateFindingsInput {
-  readonly batches: readonly (readonly ParsedFinding[])[];
+  readonly batches: readonly (readonly Finding[])[];
   readonly minSeverity: FindingSeverity;
 }
 
@@ -186,7 +186,7 @@ function countBySeverity(findings: readonly AggregatedFinding[]): SeverityCounts
   return counts;
 }
 
-export function buildFindingFingerprint(finding: ParsedFinding): string {
+export function buildFindingFingerprint(finding: Finding): string {
   const payload = [
     FINGERPRINT_VERSION,
     normalizeFilePath(finding.file),

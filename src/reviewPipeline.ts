@@ -1,3 +1,5 @@
+import type { LanguageModel } from "ai";
+
 import {
   aggregateFindings,
   type AggregatedFinding,
@@ -10,16 +12,9 @@ import {
   type ContextBuilderWarning,
   type ContextBuilderWarningCode,
 } from "./contextBuilder";
-import {
-  parseModelResponse,
-  type ParsedFinding,
-  type ResponseParserCandidateSource,
-  type ResponseParserWarning,
-  type ResponseParserWarningCode,
-} from "./responseParser";
+import type { Finding } from "./findingSchema";
 import { routeFilesToAgents } from "./router";
 import type { AgentName, RoutingRuntimeConfig } from "./routingTypes";
-import type { LlmProvider } from "./llmProvider";
 import {
   runAgentBatches,
   type AgentInstructionsByAgent,
@@ -36,7 +31,7 @@ export interface RunReviewPipelineInput {
   readonly changedFiles?: readonly string[];
   readonly routingConfig: RoutingRuntimeConfig;
   readonly agentInstructions: AgentInstructionsByAgent;
-  readonly provider: LlmProvider;
+  readonly model: LanguageModel;
   readonly maxCharLimit: number;
   readonly concurrency: number;
   readonly retry: RunnerRetryConfig;
@@ -47,16 +42,12 @@ export interface RunReviewPipelineInput {
 export interface ParsedBatchFindings {
   readonly batchId: string;
   readonly agent: AgentName;
-  readonly findings: readonly ParsedFinding[];
-  readonly warnings: readonly ResponseParserWarning[];
+  readonly findings: readonly Finding[];
 }
 
-export type ReviewPipelineWarningStage = "context" | "runner" | "parser";
+export type ReviewPipelineWarningStage = "context" | "runner";
 export type ReviewPipelineWarningLevel = "warning" | "error";
-export type ReviewPipelineWarningCode =
-  | ContextBuilderWarningCode
-  | RunnerFailureCode
-  | ResponseParserWarningCode;
+export type ReviewPipelineWarningCode = ContextBuilderWarningCode | RunnerFailureCode;
 
 export interface ReviewPipelineWarning {
   readonly stage: ReviewPipelineWarningStage;
@@ -66,9 +57,6 @@ export interface ReviewPipelineWarning {
   readonly filePath?: string;
   readonly batchId?: string;
   readonly agent?: AgentName;
-  readonly candidateSource?: ResponseParserCandidateSource;
-  readonly candidateIndex?: number;
-  readonly recordIndex?: number;
 }
 
 export interface ReviewPipelineMetadata {
@@ -79,7 +67,6 @@ export interface ReviewPipelineMetadata {
   readonly batchCount: number;
   readonly batchCountByAgent: Readonly<Record<string, number>>;
   readonly parsedBatchCount: number;
-  readonly parserWarningCount: number;
   readonly failedBatchCount: number;
   readonly failedBatches: readonly BatchRunFailure[];
   readonly runner: RunnerSummary;
@@ -145,34 +132,12 @@ function mapRunnerFailure(failure: BatchRunFailure): ReviewPipelineWarning {
   };
 }
 
-function parseSuccessfulBatch(success: BatchRunSuccess): ParsedBatchFindings {
-  const parsed = parseModelResponse(success.rawOutput);
+function toBatchFindings(success: BatchRunSuccess): ParsedBatchFindings {
   return {
     batchId: success.batchId,
     agent: success.agent,
-    findings: parsed.findings,
-    warnings: parsed.warnings,
+    findings: success.findings,
   };
-}
-
-function mapParserWarnings(parsedBatches: readonly ParsedBatchFindings[]): ReviewPipelineWarning[] {
-  const warnings: ReviewPipelineWarning[] = [];
-  for (const parsedBatch of parsedBatches) {
-    for (const warning of parsedBatch.warnings) {
-      warnings.push({
-        stage: "parser",
-        level: "warning",
-        code: warning.code,
-        message: warning.message,
-        batchId: parsedBatch.batchId,
-        agent: parsedBatch.agent,
-        candidateSource: warning.candidateSource,
-        candidateIndex: warning.candidateIndex,
-        recordIndex: warning.recordIndex,
-      });
-    }
-  }
-  return warnings;
 }
 
 export async function runReviewPipeline(
@@ -202,13 +167,12 @@ export async function runReviewPipeline(
   const runnerResult = await runAgentBatches({
     batches: batchesResult.batches,
     agentInstructions: input.agentInstructions,
-    provider: input.provider,
+    model: input.model,
     concurrency: input.concurrency,
     retry: input.retry,
   });
 
-  const parsedBatches = runnerResult.successes.map((success) => parseSuccessfulBatch(success));
-  const parserWarnings = mapParserWarnings(parsedBatches);
+  const parsedBatches = runnerResult.successes.map(toBatchFindings);
 
   const aggregationResult = aggregateFindings({
     batches: parsedBatches.map((batch) => batch.findings),
@@ -218,7 +182,6 @@ export async function runReviewPipeline(
   const warnings: ReviewPipelineWarning[] = [
     ...contextResult.warnings.map(mapContextWarning),
     ...runnerResult.failures.map(mapRunnerFailure),
-    ...parserWarnings,
   ];
 
   return {
@@ -232,7 +195,6 @@ export async function runReviewPipeline(
       batchCount: batchesResult.batches.length,
       batchCountByAgent: countBatchesByAgent(batchesResult.batches),
       parsedBatchCount: parsedBatches.length,
-      parserWarningCount: parserWarnings.length,
       failedBatchCount: runnerResult.failures.length,
       failedBatches: runnerResult.failures,
       runner: runnerResult.summary,

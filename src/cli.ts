@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 
-import {readFile} from "node:fs/promises";
+import {readFileSync} from "node:fs";
 import {homedir} from "node:os";
 import {join, resolve} from "node:path";
 
+import type {LanguageModel} from "ai";
 import {execa} from "execa";
 import micromatch from "micromatch";
 
@@ -15,19 +16,16 @@ import {
   type CleanAnnotationsResult,
 } from "./annotator";
 import {CliArgsError, type CliOptions, formatCliUsage, parseCliArgs} from "./cliArgs";
-import {CopilotProvider} from "./copilot";
-import {resolveInstallProviderConfig, getInstallProviderConfigPath} from "./installProviderConfig";
-import {loadRoutingConfig, type LoadRoutingConfigResult} from "./config";
+import {defaultRoutingConfig} from "./defaultConfig";
 import {getChangedFiles, getMergeBase} from "./git";
-import type {LlmProvider} from "./llmProvider";
-import {createOllamaProvider} from "./ollamaProvider";
+import {loadInstallProviderConfig, getInstallProviderConfigPath} from "./installProviderConfig";
+import {createLanguageModel} from "./llmClient";
 import {renderReport} from "./reporter";
 import {runReviewPipeline, type RunReviewPipelineInput, type RunReviewPipelineResult} from "./reviewPipeline";
 import type {AgentInstructionsByAgent, RunnerRetryConfig} from "./runner";
-import type {LlmProviderName, RoutingRuntimeConfig} from "./routingTypes";
+import type {RoutingRuntimeConfig} from "./routingTypes";
 
 const DEFAULT_MAX_CHAR_LIMIT = 14_000;
-const DEFAULT_PROVIDER: LlmProviderName = "ollama";
 const DEFAULT_RETRY: RunnerRetryConfig = {
   maxRetries: 1,
   retryDelayMs: 500,
@@ -45,7 +43,6 @@ export interface CliRuntimeDependencies {
   readonly detectBaseBranch: () => Promise<string>;
   readonly getMergeBase: (baseBranch: string) => Promise<string>;
   readonly getChangedFiles: (mergeBase: string) => Promise<string[]>;
-  readonly loadRoutingConfig: (repoRootPath: string) => LoadRoutingConfigResult;
   readonly loadAgentInstructions: (
     repoRootPath: string,
     agentNames: readonly string[]
@@ -142,6 +139,7 @@ async function loadAgentInstructionsFromDisk(
   repoRootPath: string,
   agentNames: readonly string[]
 ): Promise<LoadAgentInstructionsResult> {
+  const { readFile } = await import("node:fs/promises");
   const candidateDirectories = [
     join(repoRootPath, "agents"),
     join(resolve(__dirname, ".."), "agents"),
@@ -239,24 +237,16 @@ function printDebugWarnings(
   }
 }
 
-async function resolveProviderConfig(): Promise<{
-  readonly provider: LlmProvider;
-  readonly providerName: LlmProviderName;
-}> {
-  let providerName: LlmProviderName = DEFAULT_PROVIDER;
-
+function resolveLanguageModel(): LanguageModel {
+  const configPath = getInstallProviderConfigPath(__dirname);
   try {
-    const configPath = getInstallProviderConfigPath(__dirname);
-    const configContent = await readFile(configPath, "utf8");
-    providerName = resolveInstallProviderConfig(configContent, DEFAULT_PROVIDER).provider;
-  } catch {
-    providerName = DEFAULT_PROVIDER;
+    const config = loadInstallProviderConfig(configPath);
+    return createLanguageModel(config);
+  } catch (error) {
+    throw new Error(
+      `ai-review is not configured (${(error as Error).message}). Re-run 'npm install -g ai-review' to run the install wizard.`
+    );
   }
-
-  return {
-    providerName,
-    provider: providerName === "ollama" ? createOllamaProvider() : new CopilotProvider(),
-  };
 }
 
 function defaultDependencies(): CliRuntimeDependencies {
@@ -267,7 +257,6 @@ function defaultDependencies(): CliRuntimeDependencies {
     detectBaseBranch: detectBaseBranchFromGit,
     getMergeBase,
     getChangedFiles,
-    loadRoutingConfig,
     loadAgentInstructions: loadAgentInstructionsFromDisk,
     runReviewPipeline,
     renderReport,
@@ -345,11 +334,10 @@ export async function runCli(
       return 0;
     }
 
-    const loadedRoutingConfig = deps.loadRoutingConfig(repoRootPath);
-    debugWarnings.push(...loadedRoutingConfig.warnings);
+    const routingConfig = defaultRoutingConfig;
 
     const filteredRoutingConfig = filterRoutingConfigByAgents(
-      loadedRoutingConfig.config,
+      routingConfig,
       options.agents
     );
     for (const unknownAgent of filteredRoutingConfig.unknownAgents) {
@@ -371,8 +359,8 @@ export async function runCli(
       filteredRoutingConfig.selectedAgents
     );
     debugWarnings.push(...instructionsResult.warnings);
-    const resolvedProvider = await resolveProviderConfig();
-    deps.writeStderr(`Using provider "${resolvedProvider.providerName}".`);
+
+    const model = resolveLanguageModel();
 
     const reviewResult = await deps.runReviewPipeline({
       repoRootPath,
@@ -380,7 +368,7 @@ export async function runCli(
       changedFiles,
       routingConfig: filteredRoutingConfig.config,
       agentInstructions: instructionsResult.instructions,
-      provider: resolvedProvider.provider,
+      model,
       maxCharLimit: DEFAULT_MAX_CHAR_LIMIT,
       concurrency: options.maxParallel,
       retry: DEFAULT_RETRY,

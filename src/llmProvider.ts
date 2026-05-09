@@ -1,7 +1,3 @@
-export interface LlmProvider {
-  sendPrompt(prompt: string): Promise<string>;
-}
-
 export type LlmProviderErrorCode =
   | "INVALID_PROMPT"
   | "COMMAND_NOT_FOUND"

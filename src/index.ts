@@ -1,19 +1,14 @@
 export { getChangedFiles, getFileDiff, getMergeBase, GitServiceError } from "./git";
-export { CopilotProvider, CopilotServiceError, runCopilotPrompt } from "./copilot";
-export type { CopilotPromptRunner } from "./copilot";
-export { createOllamaProvider } from "./ollamaProvider";
 export {
   LlmProviderError,
   isTransientLlmProviderError,
   isTransientLlmProviderErrorCode,
 } from "./llmProvider";
 export { defaultRoutingConfig } from "./defaultConfig";
-export { loadRoutingConfig } from "./config";
 export { routeFilesToAgents } from "./router";
 export { buildFileContexts } from "./contextBuilder";
 export { createBatches } from "./batcher";
 export { buildAgentBatchPrompt } from "./promptBuilder";
-export { parseModelResponse } from "./responseParser";
 export { runAgentBatches } from "./runner";
 export { aggregateFindings, buildFindingFingerprint, isFindingSeverity } from "./aggregator";
 export { runReviewPipeline } from "./reviewPipeline";
@@ -21,18 +16,16 @@ export { formatCliUsage, parseCliArgs, CliArgsError } from "./cliArgs";
 export { main as runCliMain, runCli } from "./cli";
 export { renderReport } from "./reporter";
 export { applyAnnotations, cleanAnnotations, AnnotatorError } from "./annotator";
-export { AGENT_NAMES, LLM_PROVIDER_NAMES } from "./routingTypes";
+export { AGENT_NAMES } from "./routingTypes";
 export {
-  DEFAULT_INSTALL_PROVIDER,
   INSTALL_PROVIDER_CONFIG_FILE_NAME,
-  INSTALL_PROVIDER_TYPES,
+  PROVIDER_KINDS,
   InstallProviderConfigParseError,
   getInstallProviderConfigPath,
-  isInstallProviderType,
-  parseInstallProviderConfig,
-  parseInstallProviderConfigObject,
-  resolveInstallProviderConfig,
+  loadInstallProviderConfig,
 } from "./installProviderConfig";
+export { createLanguageModel } from "./llmClient";
+export { findingSchema, findingsSchema } from "./findingSchema";
 export type {
   AggregatedFinding,
   AggregationDedupStats,
@@ -45,7 +38,6 @@ export type {
 export type {
   AgentGlobsMap,
   AgentName,
-  LlmProviderName,
   RoutingRuntimeConfig,
   UserRoutingConfigOverride,
 } from "./routingTypes";
@@ -58,13 +50,6 @@ export type {
 export type { AgentBatch, BatchChunk, CreateBatchesResult, FileContext } from "./batcher";
 export type { BuildAgentBatchPromptInput } from "./promptBuilder";
 export type {
-  ParseResponseResult,
-  ParsedFinding,
-  ResponseParserCandidateSource,
-  ResponseParserWarning,
-  ResponseParserWarningCode,
-} from "./responseParser";
-export type {
   AgentInstructionsByAgent,
   BatchRunFailure,
   BatchRunResult,
@@ -76,15 +61,14 @@ export type {
   RunnerRetryConfig,
   RunnerSummary,
 } from "./runner";
-export type { LlmProvider, LlmProviderErrorCode } from "./llmProvider";
+export type { LlmProviderErrorCode } from "./llmProvider";
 export type {
   InstallProviderConfig,
   InstallProviderConfigParseErrorCode,
-  InstallProviderType,
-  ParseInstallProviderConfigResult,
-  ResolveInstallProviderConfigResult,
+  ProviderKind,
 } from "./installProviderConfig";
-export type { OllamaProviderConfig } from "./ollamaProvider";
+export type { LlmClientConfig } from "./llmClient";
+export type { Finding } from "./findingSchema";
 export type {
   ParsedBatchFindings,
   ReviewPipelineMetadata,
@@ -103,7 +87,3 @@ export type {
   ApplyAnnotationsResult,
   CleanAnnotationsResult,
 } from "./annotator";
-
-//FIXME: the problem is, that ollama allows to only one usage at the time - so 5 parallel agents is impossible.
-// I'm looking for alternative solution: https://gemini.google.com/app/ac85cf3fca95c7f8?hl=pl  ;  https://claude.ai/chat/3dfa9adf-bb50-4854-88fa-22aacb1c1517
-

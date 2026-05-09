@@ -6,10 +6,7 @@ export const AGENT_NAMES = [
   "performance",
 ] as const;
 
-export const LLM_PROVIDER_NAMES = ["copilot", "ollama"] as const;
-
 export type AgentName = string;
-export type LlmProviderName = (typeof LLM_PROVIDER_NAMES)[number];
 
 export type AgentGlobsMap = Record<string, readonly string[]>;
 
