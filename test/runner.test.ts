@@ -1,15 +1,31 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { MockLanguageModelV3 } from "ai/test";
 
 import type { AgentBatch } from "../src/batcher";
-import { LlmProviderError, type LlmProvider } from "../src/llmProvider";
+import { LlmProviderError } from "../src/llmProvider";
+import type { Finding } from "../src/findingSchema";
 import { runAgentBatches } from "../src/runner";
 
-const { sendPromptMock } = vi.hoisted(() => ({
-  sendPromptMock: vi.fn(),
+const { generateFindingsMock } = vi.hoisted(() => ({
+  generateFindingsMock: vi.fn<(model: unknown, prompt: string) => Promise<Finding[]>>(),
 }));
 
-const provider: LlmProvider = {
-  sendPrompt: sendPromptMock,
+vi.mock("../src/llmAdapter", () => ({
+  generateFindings: generateFindingsMock,
+}));
+
+const fakeModel = new MockLanguageModelV3({
+  doGenerate: async () => ({ rawCall: { rawPrompt: "", rawSettings: {} }, finishReason: "stop" as const, usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } }, warnings: [], content: [] }),
+});
+
+const validFinding: Finding = {
+  file: "src/app/example.ts",
+  line: 1,
+  agent: "architect",
+  severity: "warning",
+  category: "design",
+  message: "Issue found",
+  suggestion: "Fix it",
 };
 
 function createBatch(id: string, batchIndex = 0, totalBatches = 1): AgentBatch {
@@ -42,7 +58,7 @@ function delay(ms: number): Promise<void> {
 }
 
 beforeEach(() => {
-  sendPromptMock.mockReset();
+  generateFindingsMock.mockReset();
 });
 
 describe("runAgentBatches", () => {
@@ -50,63 +66,64 @@ describe("runAgentBatches", () => {
     const firstBatch = createBatch("batch-1", 0, 2);
     const secondBatch = createBatch("batch-2", 1, 2);
 
-    sendPromptMock.mockImplementation(async (prompt: string) => {
+    generateFindingsMock.mockImplementation(async (_model, prompt: string) => {
       if (prompt.includes("batch_id: batch-1")) {
         await delay(20);
-        return "output-1";
+        return [validFinding];
       }
-      return "output-2";
+      return [];
     });
 
     const result = await runAgentBatches({
       batches: [firstBatch, secondBatch],
       agentInstructions: { architect: "Review architecture." },
-      provider,
+      model: fakeModel,
       concurrency: 2,
       retry: { maxRetries: 2, retryDelayMs: 0 },
     });
 
     expect(result.results.map((item) => item.batchId)).toEqual(["batch-1", "batch-2"]);
-    expect(result.successes.map((item) => item.rawOutput)).toEqual(["output-1", "output-2"]);
+    expect(result.successes[0]?.findings).toEqual([validFinding]);
+    expect(result.successes[1]?.findings).toEqual([]);
     expect(result.summary.failureCount).toBe(0);
   });
 
   it("retries transient command failures and succeeds within retry budget", async () => {
-    sendPromptMock
+    generateFindingsMock
       .mockRejectedValueOnce(new LlmProviderError("COMMAND_FAILED", "Temporary outage"))
       .mockRejectedValueOnce(new LlmProviderError("COMMAND_FAILED", "Temporary outage"))
-      .mockResolvedValueOnce("recovered");
+      .mockResolvedValueOnce([validFinding]);
 
     const result = await runAgentBatches({
       batches: [createBatch("batch-retry")],
       agentInstructions: { architect: "Review architecture." },
-      provider,
+      model: fakeModel,
       concurrency: 1,
       retry: { maxRetries: 2, retryDelayMs: 0 },
     });
 
-    expect(sendPromptMock).toHaveBeenCalledTimes(3);
+    expect(generateFindingsMock).toHaveBeenCalledTimes(3);
     expect(result.successes).toHaveLength(1);
     expect(result.successes[0]).toMatchObject({
       batchId: "batch-retry",
       attemptCount: 3,
       retryCount: 2,
-      rawOutput: "recovered",
     });
+    expect(result.successes[0]?.findings).toEqual([validFinding]);
   });
 
   it("records warning metadata when transient failures exceed maxRetries", async () => {
-    sendPromptMock.mockRejectedValue(new LlmProviderError("COMMAND_FAILED", "Timeout while contacting model"));
+    generateFindingsMock.mockRejectedValue(new LlmProviderError("COMMAND_FAILED", "Timeout while contacting model"));
 
     const result = await runAgentBatches({
       batches: [createBatch("batch-timeout")],
       agentInstructions: { architect: "Review architecture." },
-      provider,
+      model: fakeModel,
       concurrency: 1,
       retry: { maxRetries: 2, retryDelayMs: 0 },
     });
 
-    expect(sendPromptMock).toHaveBeenCalledTimes(3);
+    expect(generateFindingsMock).toHaveBeenCalledTimes(3);
     expect(result.failures).toHaveLength(1);
     expect(result.failures[0]).toMatchObject({
       batchId: "batch-timeout",
@@ -119,17 +136,17 @@ describe("runAgentBatches", () => {
   });
 
   it("records error metadata for non-transient failures without retrying", async () => {
-    sendPromptMock.mockRejectedValue(new LlmProviderError("NOT_AUTHENTICATED", "Please login first"));
+    generateFindingsMock.mockRejectedValue(new LlmProviderError("NOT_AUTHENTICATED", "Please login first"));
 
     const result = await runAgentBatches({
       batches: [createBatch("batch-auth")],
       agentInstructions: { architect: "Review architecture." },
-      provider,
+      model: fakeModel,
       concurrency: 1,
       retry: { maxRetries: 2, retryDelayMs: 0 },
     });
 
-    expect(sendPromptMock).toHaveBeenCalledTimes(1);
+    expect(generateFindingsMock).toHaveBeenCalledTimes(1);
     expect(result.failures[0]).toMatchObject({
       batchId: "batch-auth",
       code: "NOT_AUTHENTICATED",
@@ -140,16 +157,16 @@ describe("runAgentBatches", () => {
     expect(result.summary.errorCount).toBe(1);
   });
 
-  it("records missing instruction failure without calling Copilot", async () => {
+  it("records missing instruction failure without calling the adapter", async () => {
     const result = await runAgentBatches({
       batches: [createBatch("batch-no-instruction")],
       agentInstructions: {},
-      provider,
+      model: fakeModel,
       concurrency: 1,
       retry: { maxRetries: 2, retryDelayMs: 0 },
     });
 
-    expect(sendPromptMock).not.toHaveBeenCalled();
+    expect(generateFindingsMock).not.toHaveBeenCalled();
     expect(result.failures[0]).toMatchObject({
       batchId: "batch-no-instruction",
       code: "MISSING_AGENT_INSTRUCTION",
@@ -163,12 +180,12 @@ describe("runAgentBatches", () => {
       runAgentBatches({
         batches: [createBatch("b")],
         agentInstructions: { architect: "Review." },
-        provider,
+        model: fakeModel,
         concurrency: 0,
         retry: { maxRetries: 0, retryDelayMs: 0 },
       })
     ).rejects.toThrow(/"concurrency" must be a positive integer/u);
-    expect(sendPromptMock).not.toHaveBeenCalled();
+    expect(generateFindingsMock).not.toHaveBeenCalled();
   });
 
   it("throws for concurrency: 1.5", async () => {
@@ -176,7 +193,7 @@ describe("runAgentBatches", () => {
       runAgentBatches({
         batches: [createBatch("b")],
         agentInstructions: { architect: "Review." },
-        provider,
+        model: fakeModel,
         concurrency: 1.5,
         retry: { maxRetries: 0, retryDelayMs: 0 },
       })
@@ -188,7 +205,7 @@ describe("runAgentBatches", () => {
       runAgentBatches({
         batches: [createBatch("b")],
         agentInstructions: { architect: "Review." },
-        provider,
+        model: fakeModel,
         concurrency: 1,
         retry: { maxRetries: -1, retryDelayMs: 0 },
       })
@@ -200,7 +217,7 @@ describe("runAgentBatches", () => {
       runAgentBatches({
         batches: [createBatch("b")],
         agentInstructions: { architect: "Review." },
-        provider,
+        model: fakeModel,
         concurrency: 1,
         retry: { maxRetries: 0, retryDelayMs: -1 },
       })
@@ -208,38 +225,38 @@ describe("runAgentBatches", () => {
   });
 
   it("maxRetries: 0 succeeds on first attempt without retrying", async () => {
-    sendPromptMock.mockResolvedValueOnce("output");
+    generateFindingsMock.mockResolvedValueOnce([validFinding]);
 
     const result = await runAgentBatches({
       batches: [createBatch("batch-once")],
       agentInstructions: { architect: "Review." },
-      provider,
+      model: fakeModel,
       concurrency: 1,
       retry: { maxRetries: 0, retryDelayMs: 0 },
     });
 
-    expect(sendPromptMock).toHaveBeenCalledTimes(1);
+    expect(generateFindingsMock).toHaveBeenCalledTimes(1);
     expect(result.successes[0]).toMatchObject({
       batchId: "batch-once",
       status: "success",
       attemptCount: 1,
       retryCount: 0,
-      rawOutput: "output",
     });
+    expect(result.successes[0]?.findings).toEqual([validFinding]);
   });
 
   it("maxRetries: 0 records transient failure without retrying", async () => {
-    sendPromptMock.mockRejectedValueOnce(new LlmProviderError("RATE_LIMITED", "rate limited"));
+    generateFindingsMock.mockRejectedValueOnce(new LlmProviderError("RATE_LIMITED", "rate limited"));
 
     const result = await runAgentBatches({
       batches: [createBatch("batch-no-retry")],
       agentInstructions: { architect: "Review." },
-      provider,
+      model: fakeModel,
       concurrency: 1,
       retry: { maxRetries: 0, retryDelayMs: 0 },
     });
 
-    expect(sendPromptMock).toHaveBeenCalledTimes(1);
+    expect(generateFindingsMock).toHaveBeenCalledTimes(1);
     expect(result.failures[0]).toMatchObject({
       batchId: "batch-no-retry",
       code: "RATE_LIMITED",

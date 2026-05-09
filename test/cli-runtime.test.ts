@@ -1,13 +1,15 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { tmpdir } from "node:os";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { runCli, type CliRuntimeDependencies } from "../src/cli";
 import type { AggregatedFinding } from "../src/aggregator";
-import { CopilotProvider } from "../src/copilot";
-import { getInstallProviderConfigPath } from "../src/installProviderConfig";
-import * as ollamaProviderModule from "../src/ollamaProvider";
+import {
+  INSTALL_PROVIDER_CONFIG_FILE_NAME,
+  getInstallProviderConfigPath,
+} from "../src/installProviderConfig";
 import type {
   ReviewPipelineWarning,
   RunReviewPipelineInput,
@@ -16,14 +18,19 @@ import type {
 import type { RoutingRuntimeConfig } from "../src/routingTypes";
 
 const installProviderConfigPath = getInstallProviderConfigPath(resolve(process.cwd(), "src"));
-const originalOllamaApiKey = process.env.OLLAMA_API_KEY;
 
-function removeInstallProviderConfig(): void {
-  rmSync(installProviderConfigPath, { force: true });
-}
+const VALID_INSTALL_CONFIG = JSON.stringify({
+  provider: "openai-compatible",
+  model: "gpt-4o-mini",
+  apiKeyEnv: "AI_REVIEW_TEST_API_KEY",
+}, null, 2) + "\n";
 
 function writeInstallProviderConfig(content: string): void {
   writeFileSync(installProviderConfigPath, content, "utf8");
+}
+
+function removeInstallProviderConfig(): void {
+  rmSync(installProviderConfigPath, { force: true });
 }
 
 function createRoutingConfig(): RoutingRuntimeConfig {
@@ -54,7 +61,6 @@ function createPipelineResult(
       batchCount: 0,
       batchCountByAgent: {},
       parsedBatchCount: 0,
-      parserWarningCount: 0,
       failedBatchCount: 0,
       failedBatches: [],
       runner: {
@@ -100,9 +106,6 @@ interface RuntimeTestDeps {
   readonly detectBaseBranch: ReturnType<typeof vi.fn<() => Promise<string>>>;
   readonly getMergeBase: ReturnType<typeof vi.fn<(baseBranch: string) => Promise<string>>>;
   readonly getChangedFiles: ReturnType<typeof vi.fn<(mergeBase: string) => Promise<string[]>>>;
-  readonly loadRoutingConfig: ReturnType<
-    typeof vi.fn<(repoRootPath: string) => ReturnType<CliRuntimeDependencies["loadRoutingConfig"]>>
-  >;
   readonly loadAgentInstructions: ReturnType<
     typeof vi.fn<
       (
@@ -128,12 +131,6 @@ function createRuntimeDeps(): RuntimeTestDeps {
   const getChangedFiles = vi.fn<(mergeBase: string) => Promise<string[]>>().mockResolvedValue([
     "src/service.ts",
   ]);
-  const loadRoutingConfig = vi
-    .fn<(repoRootPath: string) => ReturnType<CliRuntimeDependencies["loadRoutingConfig"]>>()
-    .mockReturnValue({
-      config: createRoutingConfig(),
-      warnings: [],
-    });
   const loadAgentInstructions = vi
     .fn<
       (
@@ -175,7 +172,6 @@ function createRuntimeDeps(): RuntimeTestDeps {
       detectBaseBranch,
       getMergeBase,
       getChangedFiles,
-      loadRoutingConfig,
       loadAgentInstructions,
       runReviewPipeline,
       renderReport,
@@ -188,7 +184,6 @@ function createRuntimeDeps(): RuntimeTestDeps {
     detectBaseBranch,
     getMergeBase,
     getChangedFiles,
-    loadRoutingConfig,
     loadAgentInstructions,
     runReviewPipeline,
     renderReport,
@@ -199,17 +194,13 @@ function createRuntimeDeps(): RuntimeTestDeps {
 
 beforeEach(() => {
   vi.restoreAllMocks();
-  removeInstallProviderConfig();
-  process.env.OLLAMA_API_KEY = "test-ollama-key";
+  writeInstallProviderConfig(VALID_INSTALL_CONFIG);
+  process.env.AI_REVIEW_TEST_API_KEY = "test-key";
 });
 
 afterEach(() => {
   removeInstallProviderConfig();
-  if (originalOllamaApiKey === undefined) {
-    delete process.env.OLLAMA_API_KEY;
-  } else {
-    process.env.OLLAMA_API_KEY = originalOllamaApiKey;
-  }
+  delete process.env.AI_REVIEW_TEST_API_KEY;
 });
 
 describe("runCli runtime flow", () => {
@@ -256,7 +247,7 @@ describe("runCli runtime flow", () => {
     rmSync(repoWithoutAgents, { recursive: true, force: true });
   });
 
-  it("applies --base, --files, --agents, --severity, --parallel and prints raw JSON", async () => {
+  it("applies --base, --files, --agents, --severity, --parallel and passes model to pipeline", async () => {
     const deps = createRuntimeDeps();
     deps.getChangedFiles.mockResolvedValue(["src/service.ts", "README.md", "scripts/setup.sh"]);
 
@@ -299,13 +290,11 @@ describe("runCli runtime flow", () => {
         changedFiles: ["src/service.ts"],
         minSeverity: "warning",
         concurrency: 3,
-        provider: expect.objectContaining({
-          sendPrompt: expect.any(Function),
-        }),
+        model: expect.anything(),
         routingConfig: expect.objectContaining({
           agentGlobs: expect.objectContaining({
-            tester: ["**/*.ts"],
-            architect: ["**/*.ts"],
+            tester: expect.any(Array),
+            architect: expect.any(Array),
           }),
         }),
       })
@@ -313,66 +302,42 @@ describe("runCli runtime flow", () => {
     const reviewInput = deps.runReviewPipeline.mock.calls[0]?.[0];
     const routedAgents = reviewInput ? Object.keys(reviewInput.routingConfig.agentGlobs).sort() : [];
     expect(routedAgents).toEqual(["architect", "tester"]);
-    expect(reviewInput?.provider).toEqual(
-      expect.objectContaining({
-        sendPrompt: expect.any(Function),
-      })
-    );
     expect(deps.writeStdout).toHaveBeenCalledWith(JSON.stringify([finding]));
     expect(deps.renderReport).not.toHaveBeenCalled();
     expect(deps.applyAnnotations).not.toHaveBeenCalled();
   });
 
-  it("uses Ollama provider when install config selects ollama", async () => {
+  it("passes a LanguageModel when install config is valid", async () => {
     const deps = createRuntimeDeps();
-    const ollamaProvider = {
-      sendPrompt: vi.fn().mockResolvedValue("ok"),
-    };
-    const createOllamaProviderSpy = vi
-      .spyOn(ollamaProviderModule, "createOllamaProvider")
-      .mockReturnValue(ollamaProvider);
-    writeInstallProviderConfig('{ "provider": "ollama" }');
 
     const exitCode = await runCli(["--json"], deps.overrides);
 
     expect(exitCode).toBe(0);
-    expect(createOllamaProviderSpy).toHaveBeenCalledTimes(1);
     const reviewInput = deps.runReviewPipeline.mock.calls[0]?.[0];
-    expect(reviewInput?.provider).toBe(ollamaProvider);
+    expect(reviewInput?.model).toBeDefined();
+    expect(typeof reviewInput?.model).toBe("object");
   });
 
-  it("uses Copilot provider when install config selects copilot", async () => {
+  it("returns error exit code when install config is missing", async () => {
+    removeInstallProviderConfig();
     const deps = createRuntimeDeps();
-    const createOllamaProviderSpy = vi.spyOn(ollamaProviderModule, "createOllamaProvider");
-    writeInstallProviderConfig('{ "provider": "copilot" }');
 
     const exitCode = await runCli(["--json"], deps.overrides);
 
-    expect(exitCode).toBe(0);
-    expect(createOllamaProviderSpy).not.toHaveBeenCalled();
-    const reviewInput = deps.runReviewPipeline.mock.calls[0]?.[0];
-    expect(reviewInput?.provider).toBeInstanceOf(CopilotProvider);
+    expect(exitCode).toBe(1);
+    expect(deps.writeStderr).toHaveBeenCalledWith(expect.stringContaining("Error:"));
+    expect(deps.runReviewPipeline).not.toHaveBeenCalled();
   });
 
-  it("falls back to Ollama provider when install config is missing or invalid", async () => {
-    const fallbackOllamaProvider = {
-      sendPrompt: vi.fn().mockResolvedValue("ok"),
-    };
-    const createOllamaProviderSpy = vi
-      .spyOn(ollamaProviderModule, "createOllamaProvider")
-      .mockReturnValue(fallbackOllamaProvider);
+  it("returns error exit code when API key env var is missing", async () => {
+    delete process.env.AI_REVIEW_TEST_API_KEY;
+    const deps = createRuntimeDeps();
 
-    const depsMissingConfig = createRuntimeDeps();
-    const missingConfigExitCode = await runCli(["--json"], depsMissingConfig.overrides);
-    expect(missingConfigExitCode).toBe(0);
-    expect(depsMissingConfig.runReviewPipeline.mock.calls[0]?.[0]?.provider).toBe(fallbackOllamaProvider);
+    const exitCode = await runCli(["--json"], deps.overrides);
 
-    const depsInvalidConfig = createRuntimeDeps();
-    writeInstallProviderConfig('{ "provider": "unsupported" }');
-    const invalidConfigExitCode = await runCli(["--json"], depsInvalidConfig.overrides);
-    expect(invalidConfigExitCode).toBe(0);
-    expect(depsInvalidConfig.runReviewPipeline.mock.calls[0]?.[0]?.provider).toBe(fallbackOllamaProvider);
-    expect(createOllamaProviderSpy).toHaveBeenCalledTimes(2);
+    expect(exitCode).toBe(1);
+    expect(deps.writeStderr).toHaveBeenCalledWith(expect.stringContaining("Error:"));
+    expect(deps.runReviewPipeline).not.toHaveBeenCalled();
   });
 
   it("returns empty JSON when no files remain after --files filter", async () => {
@@ -388,10 +353,6 @@ describe("runCli runtime flow", () => {
 
   it("prints report, annotates findings, and emits debug warnings", async () => {
     const deps = createRuntimeDeps();
-    deps.loadRoutingConfig.mockReturnValue({
-      config: createRoutingConfig(),
-      warnings: ["Routing config fallback warning"],
-    });
     deps.loadAgentInstructions.mockResolvedValue({
       instructions: {
         tester: "Tester instructions",
@@ -417,7 +378,7 @@ describe("runCli runtime flow", () => {
           stage: "runner",
           level: "warning",
           code: "COMMAND_FAILED",
-          message: "copilot invocation timed out",
+          message: "adapter invocation timed out",
           batchId: "architect::001",
           agent: "architect",
         },
@@ -430,11 +391,6 @@ describe("runCli runtime flow", () => {
     expect(deps.renderReport).toHaveBeenCalledWith([finding]);
     expect(deps.writeStdout).toHaveBeenCalledWith("REPORT");
     expect(deps.applyAnnotations).toHaveBeenCalledWith([finding], "C:\\repo");
-    expect(
-      deps.writeStderr.mock.calls.some(([message]) =>
-        String(message).includes("Routing config fallback warning")
-      )
-    ).toBe(true);
     expect(
       deps.writeStderr.mock.calls.some(([message]) =>
         String(message).includes("Pipeline runner warning (COMMAND_FAILED)")

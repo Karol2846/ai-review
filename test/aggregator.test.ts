@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import { aggregateFindings, buildFindingFingerprint } from "../src/aggregator";
-import type { ParsedFinding } from "../src/responseParser";
+import type { Finding } from "../src/findingSchema";
 
-function createFinding(overrides: Partial<ParsedFinding> = {}): ParsedFinding {
+function createFinding(overrides: Partial<Finding> = {}): Finding {
   return {
     file: "src/sample.ts",
     line: 10,

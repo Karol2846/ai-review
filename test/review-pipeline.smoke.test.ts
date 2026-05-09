@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { MockLanguageModelV3 } from "ai/test";
 
 import type { AgentBatch } from "../src/batcher";
 import type { BuildFileContextsResult } from "../src/contextBuilder";
-import type { LlmProvider } from "../src/llmProvider";
+import type { Finding } from "../src/findingSchema";
 import type {
   BatchRunFailure,
   BatchRunResult,
@@ -36,6 +37,10 @@ vi.mock("../src/runner", async () => {
 
 import { runReviewPipeline } from "../src/reviewPipeline";
 
+const fakeModel = new MockLanguageModelV3({
+  doGenerate: async () => ({ rawCall: { rawPrompt: "", rawSettings: {} }, finishReason: "stop" as const, usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } }, warnings: [], content: [] }),
+});
+
 function createRoutingConfig(): RoutingRuntimeConfig {
   return {
     unmatchedFilesPolicy: "skip",
@@ -48,7 +53,7 @@ function createRoutingConfig(): RoutingRuntimeConfig {
   };
 }
 
-function createSuccess(batch: AgentBatch, rawOutput: string, attemptCount = 1): BatchRunSuccess {
+function createSuccess(batch: AgentBatch, findings: Finding[], attemptCount = 1): BatchRunSuccess {
   return {
     status: "success",
     batchId: batch.id,
@@ -57,7 +62,7 @@ function createSuccess(batch: AgentBatch, rawOutput: string, attemptCount = 1): 
     totalBatches: batch.totalBatches,
     attemptCount,
     retryCount: Math.max(0, attemptCount - 1),
-    rawOutput,
+    findings,
   };
 }
 
@@ -123,8 +128,7 @@ beforeEach(() => {
 });
 
 describe("runReviewPipeline (smoke)", () => {
-  it("wires routing, batching, parser, and aggregator into a deterministic end-to-end flow", async () => {
-    const provider: LlmProvider = { sendPrompt: vi.fn() };
+  it("wires routing, batching, and aggregator into a deterministic end-to-end flow", async () => {
     const contextResult: BuildFileContextsResult = {
       contexts: [
         {
@@ -148,26 +152,33 @@ describe("runReviewPipeline (smoke)", () => {
     };
     buildFileContextsMock.mockResolvedValue(contextResult);
 
+    const architectFinding: Finding = {
+      file: "src/service.ts",
+      line: 1,
+      agent: "architect",
+      severity: "critical",
+      category: "input-validation",
+      message: "Input is trimmed without null guard.",
+      suggestion: "Guard against undefined before calling trim.",
+    };
+    const testerFinding: Finding = {
+      file: "src/service.ts",
+      line: 1,
+      agent: "tester",
+      severity: "warning",
+      category: "input-validation",
+      message: "Input is trimmed without null guard.",
+      suggestion: "Add a test for undefined input.",
+    };
+
     runAgentBatchesMock.mockImplementation(async (input: RunAgentBatchesInput) => {
-      expect(input.provider).toBe(provider);
+      expect(input.model).toBe(fakeModel);
       const results = input.batches.map((batch) => {
         if (batch.agent === "architect") {
-          return createSuccess(
-            batch,
-            [
-              "```json",
-              '[{"file":"src/service.ts","line":1,"agent":"architect","severity":"critical","category":"input-validation","message":"Input is trimmed without null guard.","suggestion":"Guard against undefined before calling trim."}]',
-              "```",
-            ].join("\n")
-          );
+          return createSuccess(batch, [architectFinding]);
         }
-
-        return createSuccess(
-          batch,
-          '[{"file":"src/service.ts","line":1,"agent":"tester","severity":"warning","category":"input-validation","message":"Input is trimmed without null guard.","suggestion":"Add a test for undefined input."}]'
-        );
+        return createSuccess(batch, [testerFinding]);
       });
-
       return toRunnerResult(results);
     });
 
@@ -179,7 +190,7 @@ describe("runReviewPipeline (smoke)", () => {
         tester: "Review tests and edge cases.",
         architect: "Review architecture and API safety.",
       },
-      provider,
+      model: fakeModel,
       maxCharLimit: 4_000,
       concurrency: 2,
       retry: { maxRetries: 1, retryDelayMs: 0 },
@@ -206,7 +217,6 @@ describe("runReviewPipeline (smoke)", () => {
   });
 
   it("surfaces failed batches in warnings/metadata and still returns successful findings", async () => {
-    const provider: LlmProvider = { sendPrompt: vi.fn() };
     const contextResult: BuildFileContextsResult = {
       contexts: [
         {
@@ -219,6 +229,16 @@ describe("runReviewPipeline (smoke)", () => {
     };
     buildFileContextsMock.mockResolvedValue(contextResult);
 
+    const testerFinding: Finding = {
+      file: "src/service.ts",
+      line: 1,
+      agent: "tester",
+      severity: "warning",
+      category: "input-validation",
+      message: "Input is trimmed without null guard.",
+      suggestion: "Add null-input test coverage.",
+    };
+
     runAgentBatchesMock.mockImplementation(async (input: RunAgentBatchesInput) => {
       const testerBatch = input.batches.find((batch) => batch.agent === "tester");
       const architectBatch = input.batches.find((batch) => batch.agent === "architect");
@@ -227,32 +247,10 @@ describe("runReviewPipeline (smoke)", () => {
         throw new Error("Expected tester and architect batches.");
       }
 
-      const success = createSuccess(
-        testerBatch,
-        JSON.stringify([
-          {
-            file: "src/service.ts",
-            line: 1,
-            agent: "tester",
-            severity: "warning",
-            category: "input-validation",
-            message: "Input is trimmed without null guard.",
-            suggestion: "Add null-input test coverage.",
-          },
-          {
-            file: "",
-            line: 0,
-            agent: "tester",
-            severity: "warning",
-            category: "invalid",
-            message: "invalid",
-            suggestion: "invalid",
-          },
-        ])
-      );
+      const success = createSuccess(testerBatch, [testerFinding]);
       const failure = createFailure(architectBatch, {
         code: "COMMAND_FAILED",
-        message: "copilot command timed out",
+        message: "adapter timed out",
         isTransient: true,
         attemptCount: 2,
         retryCount: 1,
@@ -269,7 +267,7 @@ describe("runReviewPipeline (smoke)", () => {
         tester: "Review tests and edge cases.",
         architect: "Review architecture and API safety.",
       },
-      provider,
+      model: fakeModel,
       maxCharLimit: 4_000,
       concurrency: 2,
       retry: { maxRetries: 1, retryDelayMs: 0 },
@@ -284,14 +282,10 @@ describe("runReviewPipeline (smoke)", () => {
     expect(result.metadata.failedBatchCount).toBe(1);
     expect(result.metadata.failedBatches).toHaveLength(1);
     expect(result.metadata.runner.warningCount).toBe(1);
-    expect(result.metadata.parserWarningCount).toBe(1);
     expect(
       result.warnings.some(
         (warning) => warning.stage === "runner" && warning.code === "COMMAND_FAILED" && warning.level === "warning"
       )
-    ).toBe(true);
-    expect(
-      result.warnings.some((warning) => warning.stage === "parser" && warning.code === "INVALID_RECORD")
     ).toBe(true);
   });
 });
