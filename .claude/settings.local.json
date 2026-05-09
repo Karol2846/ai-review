@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "WebFetch(domain:docs.ollama.com)",
+      "WebSearch",
+      "WebFetch(domain:ollama.com)",
+      "Bash(node *)"
+    ]
+  }
+}

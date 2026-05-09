@@ -30,11 +30,17 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
+    "@ai-sdk/amazon-bedrock": "^4.0.103",
+    "@ai-sdk/anthropic": "^3.0.76",
+    "@ai-sdk/google": "^3.0.71",
+    "@ai-sdk/openai": "^3.0.63",
+    "ai": "^6.0.177",
     "chalk": "^5.4.1",
     "execa": "^9.6.0",
     "micromatch": "^4.0.8",
     "ollama": "^0.6.3",
-    "p-map": "^7.0.3"
+    "p-map": "^7.0.3",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/micromatch": "^4.0.10",

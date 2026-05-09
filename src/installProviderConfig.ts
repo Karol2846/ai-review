@@ -1,19 +1,23 @@
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { type ProviderKind, PROVIDER_KINDS } from "./llmClient";
+
+export { type ProviderKind, PROVIDER_KINDS };
 
 export const INSTALL_PROVIDER_CONFIG_FILE_NAME = ".ai-review-install-provider.json";
-export const INSTALL_PROVIDER_TYPES = ["copilot", "ollama"] as const;
-export const DEFAULT_INSTALL_PROVIDER = "ollama";
-
-export type InstallProviderType = (typeof INSTALL_PROVIDER_TYPES)[number];
 
 export interface InstallProviderConfig {
-  readonly provider: InstallProviderType;
+  readonly provider: ProviderKind;
+  readonly model: string;
+  readonly apiKeyEnv: string;
+  readonly baseURL?: string;
 }
 
 export type InstallProviderConfigParseErrorCode =
   | "INVALID_JSON"
   | "INVALID_CONFIG_SHAPE"
-  | "INVALID_PROVIDER";
+  | "INVALID_PROVIDER_KIND"
+  | "MISSING_REQUIRED_FIELD";
 
 export class InstallProviderConfigParseError extends Error {
   readonly code: InstallProviderConfigParseErrorCode;
@@ -25,111 +29,119 @@ export class InstallProviderConfigParseError extends Error {
   }
 }
 
-export type ParseInstallProviderConfigResult =
-  | {
-      readonly ok: true;
-      readonly config: InstallProviderConfig;
-    }
-  | {
-      readonly ok: false;
-      readonly error: InstallProviderConfigParseError;
-    };
-
-export interface ResolveInstallProviderConfigResult {
-  readonly provider: InstallProviderType;
-  readonly usedFallback: boolean;
-  readonly error?: InstallProviderConfigParseError;
-}
-
-function createInvalidShapeError(message: string): ParseInstallProviderConfigResult {
-  return {
-    ok: false,
-    error: new InstallProviderConfigParseError("INVALID_CONFIG_SHAPE", message),
-  };
-}
-
-function buildAllowedProviderMessage(value: unknown): string {
-  const allowed = INSTALL_PROVIDER_TYPES.join("|");
-  const received = typeof value === "string" ? value : String(value);
-  return `Install provider must be one of ${allowed}. Received: "${received}".`;
-}
-
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function isInstallProviderType(value: unknown): value is InstallProviderType {
-  return typeof value === "string" && INSTALL_PROVIDER_TYPES.includes(value as InstallProviderType);
+function isProviderKind(value: unknown): value is ProviderKind {
+  return typeof value === "string" && (PROVIDER_KINDS as readonly string[]).includes(value);
+}
+
+const ALLOWED_KEYS = new Set(["provider", "model", "apiKeyEnv", "baseURL"]);
+const REQUIRED_KEYS = ["provider", "model", "apiKeyEnv"] as const;
+
+function parseInstallProviderConfigObject(value: unknown): InstallProviderConfig {
+  if (!isPlainObject(value)) {
+    throw new InstallProviderConfigParseError(
+      "INVALID_CONFIG_SHAPE",
+      "Install provider config root must be a JSON object."
+    );
+  }
+
+  for (const key of Object.keys(value)) {
+    if (!ALLOWED_KEYS.has(key)) {
+      throw new InstallProviderConfigParseError(
+        "INVALID_CONFIG_SHAPE",
+        `Unknown key "${key}" in install provider config. Re-run the install wizard.`
+      );
+    }
+  }
+
+  for (const key of REQUIRED_KEYS) {
+    if (!(key in value)) {
+      throw new InstallProviderConfigParseError(
+        "MISSING_REQUIRED_FIELD",
+        `Missing required field "${key}" in install provider config. Re-run the install wizard.`
+      );
+    }
+  }
+
+  const { provider, model, apiKeyEnv, baseURL } = value;
+
+  if (!isProviderKind(provider)) {
+    throw new InstallProviderConfigParseError(
+      "INVALID_PROVIDER_KIND",
+      `"provider" must be one of ${PROVIDER_KINDS.join("|")}. Received: "${String(provider)}". Re-run the install wizard.`
+    );
+  }
+
+  if (typeof model !== "string" || model.trim().length === 0) {
+    throw new InstallProviderConfigParseError(
+      "INVALID_CONFIG_SHAPE",
+      '"model" must be a non-empty string. Re-run the install wizard.'
+    );
+  }
+
+  if (typeof apiKeyEnv !== "string" || apiKeyEnv.trim().length === 0) {
+    throw new InstallProviderConfigParseError(
+      "INVALID_CONFIG_SHAPE",
+      '"apiKeyEnv" must be a non-empty string. Re-run the install wizard.'
+    );
+  }
+
+  if (baseURL !== undefined) {
+    if (provider !== "openai-compatible") {
+      throw new InstallProviderConfigParseError(
+        "INVALID_CONFIG_SHAPE",
+        '"baseURL" is only valid for the "openai-compatible" provider. Re-run the install wizard.'
+      );
+    }
+    if (typeof baseURL !== "string" || baseURL.trim().length === 0) {
+      throw new InstallProviderConfigParseError(
+        "INVALID_CONFIG_SHAPE",
+        '"baseURL" must be a non-empty string. Re-run the install wizard.'
+      );
+    }
+    try {
+      new URL(baseURL);
+    } catch {
+      throw new InstallProviderConfigParseError(
+        "INVALID_CONFIG_SHAPE",
+        `"baseURL" is not a valid URL: "${baseURL}". Re-run the install wizard.`
+      );
+    }
+
+    return { provider, model: model.trim(), apiKeyEnv: apiKeyEnv.trim(), baseURL: baseURL.trim() };
+  }
+
+  return { provider, model: model.trim(), apiKeyEnv: apiKeyEnv.trim() };
 }
 
 export function getInstallProviderConfigPath(moduleDir: string = __dirname): string {
   return resolve(moduleDir, "..", INSTALL_PROVIDER_CONFIG_FILE_NAME);
 }
 
-export function parseInstallProviderConfigObject(
-  value: unknown
-): ParseInstallProviderConfigResult {
-  if (!isPlainObject(value)) {
-    return createInvalidShapeError("Install provider config root must be a JSON object.");
+export function loadInstallProviderConfig(filePath: string): InstallProviderConfig {
+  let content: string;
+  try {
+    content = readFileSync(filePath, "utf8");
+  } catch (error) {
+    throw new InstallProviderConfigParseError(
+      "INVALID_CONFIG_SHAPE",
+      `Could not read install provider config at "${filePath}": ${(error as Error).message}`
+    );
   }
 
-  const keys = Object.keys(value);
-  if (keys.length !== 1 || keys[0] !== "provider") {
-    return createInvalidShapeError('Install provider config must include only the "provider" key.');
-  }
-
-  const provider = value.provider;
-  if (!isInstallProviderType(provider)) {
-    return {
-      ok: false,
-      error: new InstallProviderConfigParseError(
-        "INVALID_PROVIDER",
-        buildAllowedProviderMessage(provider)
-      ),
-    };
-  }
-
-  return {
-    ok: true,
-    config: {
-      provider,
-    },
-  };
-}
-
-export function parseInstallProviderConfig(content: string): ParseInstallProviderConfigResult {
   let parsed: unknown;
   try {
     parsed = JSON.parse(content) as unknown;
   } catch (error) {
-    const details = error instanceof Error && error.message.trim().length > 0 ? error.message : "Unknown error.";
-    return {
-      ok: false,
-      error: new InstallProviderConfigParseError(
-        "INVALID_JSON",
-        `Install provider config contains invalid JSON: ${details}`
-      ),
-    };
+    const details = error instanceof Error ? error.message : "Unknown error.";
+    throw new InstallProviderConfigParseError(
+      "INVALID_JSON",
+      `Install provider config contains invalid JSON: ${details}`
+    );
   }
 
   return parseInstallProviderConfigObject(parsed);
-}
-
-export function resolveInstallProviderConfig(
-  content: string,
-  fallbackProvider: InstallProviderType = DEFAULT_INSTALL_PROVIDER
-): ResolveInstallProviderConfigResult {
-  const parsed = parseInstallProviderConfig(content);
-  if (parsed.ok) {
-    return {
-      provider: parsed.config.provider,
-      usedFallback: false,
-    };
-  }
-
-  return {
-    provider: fallbackProvider,
-    usedFallback: true,
-    error: parsed.error,
-  };
 }
