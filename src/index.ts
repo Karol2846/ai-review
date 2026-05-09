@@ -87,3 +87,5 @@ export type {
   ApplyAnnotationsResult,
   CleanAnnotationsResult,
 } from "./annotator";
+
+//TODO: next step is to try this tool localy ;). I'll probably go with Groq and some cheep model

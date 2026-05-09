@@ -38,7 +38,15 @@ vi.mock("../src/runner", async () => {
 import { runReviewPipeline } from "../src/reviewPipeline";
 
 const fakeModel = new MockLanguageModelV3({
-  doGenerate: async () => ({ rawCall: { rawPrompt: "", rawSettings: {} }, finishReason: "stop" as const, usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } }, warnings: [], content: [] }),
+  doGenerate: {
+    finishReason: { unified: "stop", raw: undefined },
+    usage: {
+      inputTokens: { total: 1, noCache: undefined, cacheRead: undefined, cacheWrite: undefined },
+      outputTokens: { total: 1, text: undefined, reasoning: undefined },
+    },
+    warnings: [],
+    content: [],
+  },
 });
 
 function createRoutingConfig(): RoutingRuntimeConfig {
