@@ -25,7 +25,7 @@ function successModel(findings: Finding[]) {
     finishReason: "stop" as const,
     usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } },
     warnings: [],
-    content: [{ type: "text" as const, text: JSON.stringify(findings) }],
+    content: [{ type: "text" as const, text: JSON.stringify({ findings }) }],
   }));
 }
 

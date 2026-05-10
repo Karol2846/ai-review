@@ -11,7 +11,7 @@ export async function generateFindings(model: LanguageModel, prompt: string): Pr
       prompt,
       maxRetries: 0,
     });
-    return result.object;
+    return result.object.findings;
   } catch (error) {
     throw mapSdkError(error);
   }

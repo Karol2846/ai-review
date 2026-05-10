@@ -55,13 +55,13 @@ describe("findingSchema", () => {
 
 describe("findingsSchema", () => {
   it("accepts an empty array", () => {
-    expect(findingsSchema.safeParse([]).success).toBe(true);
+    expect(findingsSchema.safeParse({ findings: [] }).success).toBe(true);
   });
 
   it("accepts an array with multiple findings", () => {
-    const result = findingsSchema.safeParse([validFinding, { ...validFinding, line: 20 }]);
+    const result = findingsSchema.safeParse({ findings: [validFinding, { ...validFinding, line: 20 }] });
     expect(result.success).toBe(true);
-    if (result.success) expect(result.data).toHaveLength(2);
+    if (result.success) expect(result.data.findings).toHaveLength(2);
   });
 
   it("rejects a non-array", () => {

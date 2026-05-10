@@ -12,6 +12,6 @@ export const findingSchema = z.object({
   fingerprint: z.string().optional(),
 });
 
-export const findingsSchema = z.array(findingSchema);
+export const findingsSchema = z.object({ findings: z.array(findingSchema) });
 
 export type Finding = z.infer<typeof findingSchema>;
