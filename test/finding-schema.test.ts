@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { findingSchema, findingsSchema } from "../src/findingSchema";
+import { findingSchema } from "../src/findingSchema";
 
 const validFinding = {
   file: "src/foo.ts",
@@ -53,18 +53,3 @@ describe("findingSchema", () => {
   });
 });
 
-describe("findingsSchema", () => {
-  it("accepts an empty array", () => {
-    expect(findingsSchema.safeParse({ findings: [] }).success).toBe(true);
-  });
-
-  it("accepts an array with multiple findings", () => {
-    const result = findingsSchema.safeParse({ findings: [validFinding, { ...validFinding, line: 20 }] });
-    expect(result.success).toBe(true);
-    if (result.success) expect(result.data.findings).toHaveLength(2);
-  });
-
-  it("rejects a non-array", () => {
-    expect(findingsSchema.safeParse(validFinding).success).toBe(false);
-  });
-});

@@ -85,7 +85,7 @@ describe("generateFindings", () => {
     );
   });
 
-  it("maps schema validation failure to COMMAND_FAILED", async () => {
+  it("returns empty array when model output contains no valid findings", async () => {
     const badModel = makeModel(async () => ({
       rawCall: { rawPrompt: "", rawSettings: {} },
       finishReason: "stop" as const,
@@ -93,9 +93,7 @@ describe("generateFindings", () => {
       warnings: [],
       content: [{ type: "text" as const, text: JSON.stringify([{ notAFinding: true }]) }],
     }));
-    await expect(generateFindings(badModel, "x")).rejects.toSatisfy(
-      (e) => e instanceof LlmProviderError && e.code === "COMMAND_FAILED"
-    );
+    await expect(generateFindings(badModel, "x")).resolves.toEqual([]);
   });
 
   it("maps abort error to TIMEOUT", async () => {

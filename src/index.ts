@@ -25,7 +25,7 @@ export {
   loadInstallProviderConfig,
 } from "./installProviderConfig";
 export { createLanguageModel } from "./llmClient";
-export { findingSchema, findingsSchema } from "./findingSchema";
+export { findingSchema } from "./findingSchema";
 export type {
   AggregatedFinding,
   AggregationDedupStats,
