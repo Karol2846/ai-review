@@ -1,18 +1,19 @@
 # ai-review 🔍
 
-Multi-agent local code review powered by the Copilot runtime in this MVP.  
-Run **before creating a PR** (or when reviewing someone else's branch) to get focused AI critique from 5 specialized agents — each looking at your diff through a different lens.
+Multi-agent code review powered by the **Vercel AI SDK**.  
+Run **before creating a PR** (or when reviewing someone else's branch) to get focused AI critique from 5 specialized agents — each looking at your diff through a different lens.  
+Supports OpenAI-compatible endpoints (OpenAI, Groq, OpenRouter, etc.), Anthropic, Google, and AWS Bedrock.
 
 ---
 
 ## Prerequisites
 
-| Tool                           | Required      | Notes                         |
-|--------------------------------|---------------|-------------------------------|
-| `copilot` (GitHub Copilot CLI) | ⚠️ Optional    | Required for AI analysis runs |
-| `git`                          | ✅            | Diff computation              |
-| `node`                         | ✅            | Runtime for the CLI           |
-| `npm`                          | ✅            | Package manager               |
+| Tool        | Required | Notes                                                                    |
+|-------------|----------|--------------------------------------------------------------------------|
+| `git`       | Yes      | Diff computation                                                         |
+| `node`      | Yes      | Runtime for the CLI (v18+)                                               |
+| `npm`       | Yes      | Package manager                                                          |
+| LLM API key | Yes      | Env var name configured during install (e.g. `OPENAI_API_KEY`)          |
 
 ---
 
@@ -22,18 +23,22 @@ Run **before creating a PR** (or when reviewing someone else's branch) to get fo
 npm install -g ai-review
 ```
 
-This installs the `ai-review` binary and also attempts to copy the agent personas and Copilot skill into `~/.copilot/` for Copilot-based workflows.
+During install, an interactive wizard prompts for:
+1. **Provider kind**: `openai-compatible`, `anthropic`, `google`, or `bedrock`
+2. **Model name**: e.g. `gpt-4o`, `claude-sonnet-4-5`, `gemini-2.0-flash`, `us.amazon.nova-pro-v1:0`
+3. **API key env var name**: the environment variable that holds your API key (e.g. `OPENAI_API_KEY`)
+4. **Base URL** (openai-compatible only, optional): for Groq, OpenRouter, or self-hosted endpoints
 
-During install, a prompt asks you to choose a default provider: `copilot` or `ollama`. The choice is written to `.ai-review-install-provider.json` in the install directory.
+The wizard writes `.ai-review-install-provider.json` to the install directory. If the config is missing or corrupt at runtime, `ai-review` will error and ask you to re-run `npm install -g ai-review`.
+
+Before running, export the API key you configured:
+```bash
+export OPENAI_API_KEY=sk-...   # or whatever variable name you chose
+```
 
 ---
 
-## Runtime (Phase 6 complete)
-
-The runtime now uses the TypeScript/Node CLI:
-- source entrypoint: `src/cli.ts`
-- package CLI entrypoint: `dist/cli.js` (`package.json#bin.ai-review`)
-- orchestration/reporting/annotation logic lives in `src/` modules
+## Development
 
 ```bash
 npm install
@@ -44,13 +49,9 @@ npm run test
 
 `npm run test` runs the Vitest suite from `test/` (kept outside production build output).
 
-Current MVP behavior:
-- Provider selection is install-time only (`copilot` or `ollama`).
-- No CLI provider flags/options are available in this MVP.
-- Runtime reads `.ai-review-install-provider.json` from the install directory.
-- If config is missing/invalid, runtime falls back to `ollama`.
-- `ollama` mode uses Ollama Cloud (`https://ollama.com`) with model `qwen3-coder:480b-cloud`.
-- `OLLAMA_API_KEY` is required in the environment for `ollama` mode.
+- Source entrypoint: `src/cli.ts` (CLI) and `src/index.ts` (library consumers)
+- Package CLI entrypoint: `dist/cli.js` (`package.json#bin.ai-review`)
+- Provider selection is install-time only — no CLI provider flags.
 
 ---
 
@@ -77,7 +78,8 @@ ai-review
    │
   ├─ 2. ANALYZE  (parallel batched calls per file × agent)
    │      Each agent receives: diff + bounded file context
-   │      Returns: JSON array of findings
+   │      Vercel AI SDK generateObject enforces structured output
+   │      Returns: typed findings array (Zod-validated)
    │
   ├─ 3. AGGREGATE
    │      Merge all JSONs, deduplicate by fingerprint,
@@ -224,18 +226,32 @@ ai-review/
 │   ├── performance.agent.md
 │   └── tester.agent.md
 ├── src/
-│   ├── cli.ts             # CLI runtime entrypoint + orchestration
-│   ├── reviewPipeline.ts  # analyze + aggregate pipeline
-│   ├── aggregator.ts      # dedup + severity filtering + sorting
-│   ├── reporter.ts        # colored terminal report rendering
-│   └── annotator.ts       # insert / remove TODO comments
+│   ├── index.ts               # Public API barrel — re-exports all modules
+│   ├── cli.ts                 # CLI runtime entrypoint + orchestration
+│   ├── cliArgs.ts             # CLI argument parsing (parseCliArgs, CliArgsError)
+│   ├── reviewPipeline.ts      # Analyze + aggregate pipeline orchestration
+│   ├── router.ts              # File-to-agent routing via micromatch globs
+│   ├── routingTypes.ts        # Types: RoutingRuntimeConfig, AgentGlobsMap, etc.
+│   ├── runner.ts              # Parallel batch execution with retry
+│   ├── batcher.ts             # Build (file × agent) task batches
+│   ├── promptBuilder.ts       # Assemble per-batch prompts
+│   ├── contextBuilder.ts      # Load file content + git diffs
+│   ├── aggregator.ts          # Deduplicate, filter, sort findings
+│   ├── reporter.ts            # Colored terminal report rendering
+│   ├── annotator.ts           # Insert / remove TODO comments
+│   ├── git.ts                 # git merge-base and changed-files helpers
+│   ├── defaultConfig.ts       # Default agent-to-glob routing config
+│   ├── config.ts              # Load + merge .ai-reviewrc.json overrides
+│   ├── llmProvider.ts         # LlmProviderError class + error code types
+│   ├── llmClient.ts           # createLanguageModel — Vercel AI SDK factory
+│   ├── llmAdapter.ts          # generateFindings — wraps generateObject
+│   ├── installProviderConfig.ts  # Read/validate .ai-review-install-provider.json
+│   └── findingSchema.ts       # Zod schema for Finding + FindingsArray
 ├── dist/                  # compiled JS + d.ts (npm/CLI runtime)
 ├── schemas/
 │   └── finding.schema.json
-├── skill/
-│   └── SKILL.md           # Copilot CLI skill descriptor
 ├── scripts/
-│   └── postinstall.js     # Copilot integration setup (runs after npm install)
+│   └── postinstall.js     # Install-time provider wizard
 ├── package.json
 └── README.md
 ```
@@ -244,9 +260,13 @@ ai-review/
 
 ## Stack
 
+**LLM**: [Vercel AI SDK](https://sdk.vercel.ai/) (`ai` package) with provider adapters `@ai-sdk/openai`, `@ai-sdk/anthropic`, `@ai-sdk/google`, `@ai-sdk/amazon-bedrock`. Structured output uses `generateObject` with a [Zod](https://zod.dev/) schema — no JSON parsing, no regex.
+
+**Validation**: [Zod v4](https://zod.dev/) for finding schema and install config validation.
+
 Agents are tuned for: **Java 17+, Spring Boot, Spock/Groovy tests, PostgreSQL, MongoDB, SQS/SNS, DDD, REST APIs**.
 
-To customize an agent, edit the corresponding file in `~/.copilot/agents/` (or in the project's `agents/` dir and reinstall).
+To customize an agent, edit the corresponding file in `agents/` in the project directory or `~/.copilot/agents/` (copied there during install).
 
 ---
 

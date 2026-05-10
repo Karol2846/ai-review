@@ -2,10 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(npm run *)",
+      "Bash(npm test *)",
       "WebFetch(domain:docs.ollama.com)",
       "WebSearch",
       "WebFetch(domain:ollama.com)",
-      "Bash(node *)",
       "Bash(npx vitest *)",
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\karol\\\\IdeaProjects\\\\ai-review\\\\src\" -File)",
       "Bash(Select-Object Name)",
