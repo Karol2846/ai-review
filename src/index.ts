@@ -25,7 +25,6 @@ export {
   loadInstallProviderConfig,
 } from "./installProviderConfig";
 export { createLanguageModel } from "./llmClient";
-export { findingSchema } from "./findingSchema";
 export type {
   AggregatedFinding,
   AggregationDedupStats,
@@ -88,4 +87,12 @@ export type {
   CleanAnnotationsResult,
 } from "./annotator";
 
-//TODO: next step is to try this tool localy ;). I'll probably go with Groq and some cheep model
+//TODO: next:
+// - try this tool localy ;). I'll probably go with Groq and some cheep model
+// - make UX better while tool works
+//    - I would like to see info how many files each agents is reviewing
+//    - some loading circle during the process (I want to know that tool is working)
+//    - and at the end some small note how many finding we have, e.g:
+//                                                critical - 15
+//                                                warnings - 17
+//                                                info - 20
