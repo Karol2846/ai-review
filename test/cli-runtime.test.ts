@@ -105,6 +105,7 @@ interface RuntimeTestDeps {
   readonly resolveRepoRoot: ReturnType<typeof vi.fn<() => Promise<string>>>;
   readonly detectBaseBranch: ReturnType<typeof vi.fn<() => Promise<string>>>;
   readonly getMergeBase: ReturnType<typeof vi.fn<(baseBranch: string) => Promise<string>>>;
+  readonly getHeadSha: ReturnType<typeof vi.fn<() => Promise<string>>>;
   readonly getChangedFiles: ReturnType<typeof vi.fn<(mergeBase: string) => Promise<string[]>>>;
   readonly loadAgentInstructions: ReturnType<
     typeof vi.fn<
@@ -128,6 +129,7 @@ function createRuntimeDeps(): RuntimeTestDeps {
   const resolveRepoRoot = vi.fn<() => Promise<string>>().mockResolvedValue("C:\\repo");
   const detectBaseBranch = vi.fn<() => Promise<string>>().mockResolvedValue("main");
   const getMergeBase = vi.fn<(baseBranch: string) => Promise<string>>().mockResolvedValue("merge-base");
+  const getHeadSha = vi.fn<() => Promise<string>>().mockResolvedValue("head-sha-abc123");
   const getChangedFiles = vi.fn<(mergeBase: string) => Promise<string[]>>().mockResolvedValue([
     "src/service.ts",
   ]);
@@ -171,6 +173,7 @@ function createRuntimeDeps(): RuntimeTestDeps {
       resolveRepoRoot,
       detectBaseBranch,
       getMergeBase,
+      getHeadSha,
       getChangedFiles,
       loadAgentInstructions,
       runReviewPipeline,
@@ -183,6 +186,7 @@ function createRuntimeDeps(): RuntimeTestDeps {
     resolveRepoRoot,
     detectBaseBranch,
     getMergeBase,
+    getHeadSha,
     getChangedFiles,
     loadAgentInstructions,
     runReviewPipeline,
@@ -407,5 +411,33 @@ describe("runCli runtime flow", () => {
     expect(deps.writeStderr).toHaveBeenCalledWith(expect.stringContaining("Error:"));
     expect(deps.writeStdout).toHaveBeenCalledWith(expect.stringContaining("Usage: ai-review [OPTIONS]"));
     expect(deps.resolveRepoRoot).not.toHaveBeenCalled();
+  });
+
+  it("emits debug diagnostics on stderr when --debug and no changed files", async () => {
+    const deps = createRuntimeDeps();
+    deps.getChangedFiles.mockResolvedValue([]);
+    deps.getMergeBase.mockResolvedValue("deadbeef1234");
+    deps.getHeadSha.mockResolvedValue("cafebabe5678");
+
+    const exitCode = await runCli(["--debug"], deps.overrides);
+
+    expect(exitCode).toBe(0);
+    const stderrLines = deps.writeStderr.mock.calls.map(([m]) => String(m));
+    expect(stderrLines.some((l) => l.includes('DEBUG: base branch resolved to "main"'))).toBe(true);
+    expect(stderrLines.some((l) => l.includes("DEBUG: merge-base = deadbeef1234"))).toBe(true);
+    expect(stderrLines.some((l) => l.includes("DEBUG: HEAD = cafebabe5678"))).toBe(true);
+    expect(stderrLines.some((l) => l.includes("DEBUG: changed files: 0"))).toBe(true);
+    expect(stderrLines.some((l) => l.includes("DEBUG: reproduce locally:"))).toBe(true);
+  });
+
+  it("does not emit DEBUG lines when --debug is not set", async () => {
+    const deps = createRuntimeDeps();
+    deps.getChangedFiles.mockResolvedValue([]);
+
+    const exitCode = await runCli([], deps.overrides);
+
+    expect(exitCode).toBe(0);
+    const stderrLines = deps.writeStderr.mock.calls.map(([m]) => String(m));
+    expect(stderrLines.every((l) => !l.startsWith("DEBUG:"))).toBe(true);
   });
 });

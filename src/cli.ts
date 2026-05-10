@@ -42,6 +42,7 @@ export interface CliRuntimeDependencies {
   readonly resolveRepoRoot: () => Promise<string>;
   readonly detectBaseBranch: () => Promise<string>;
   readonly getMergeBase: (baseBranch: string) => Promise<string>;
+  readonly getHeadSha: () => Promise<string>;
   readonly getChangedFiles: (mergeBase: string) => Promise<string[]>;
   readonly loadAgentInstructions: (
     repoRootPath: string,
@@ -237,6 +238,10 @@ function printDebugWarnings(
   }
 }
 
+function writeDebug(debug: boolean, message: string, writeStderr: (m: string) => void): void {
+  if (debug) writeStderr(`DEBUG: ${message}`);
+}
+
 function resolveLanguageModel(): LanguageModel {
   const configPath = getInstallProviderConfigPath(__dirname);
   try {
@@ -256,6 +261,7 @@ function defaultDependencies(): CliRuntimeDependencies {
     resolveRepoRoot: resolveRepoRootFromGit,
     detectBaseBranch: detectBaseBranchFromGit,
     getMergeBase,
+    getHeadSha: async () => (await runGit(["rev-parse", "HEAD"])).trim(),
     getChangedFiles,
     loadAgentInstructions: loadAgentInstructionsFromDisk,
     runReviewPipeline,
@@ -319,13 +325,22 @@ export async function runCli(
   try {
     const baseBranch = options.baseBranch ?? (await deps.detectBaseBranch());
     const mergeBase = await deps.getMergeBase(baseBranch);
+    const headSha = await deps.getHeadSha();
     let changedFiles = await deps.getChangedFiles(mergeBase);
+
+    writeDebug(options.debug, `base branch resolved to "${baseBranch}" (origin ref: ${toOriginRef(baseBranch)})`, deps.writeStderr);
+    writeDebug(options.debug, `merge-base = ${mergeBase}`, deps.writeStderr);
+    writeDebug(options.debug, `HEAD = ${headSha}`, deps.writeStderr);
 
     if (options.fileFilter) {
       changedFiles = filterChangedFiles(changedFiles, options.fileFilter);
     }
 
+    writeDebug(options.debug, `changed files: ${changedFiles.length}`, deps.writeStderr);
+
     if (changedFiles.length === 0) {
+      writeDebug(options.debug, `reproduce locally: git diff --name-only ${mergeBase}..HEAD`, deps.writeStderr);
+      printDebugWarnings(options.debug, debugWarnings, deps.writeStderr);
       if (options.json) {
         deps.writeStdout("[]");
       } else {
