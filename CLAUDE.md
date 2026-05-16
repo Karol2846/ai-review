@@ -4,16 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-| Goal | Command |
-|------|---------|
-| Build | `npm run build` |
-| Type-check only | `npm run typecheck` |
-| Run all tests | `npm run test` |
-| Single-scope test run | `ai-review --agents "tester" --files "src/main/java/com/example/MyClass.java" --report` |
-| Install globally | `npm run build && npm install -g .` |
-| Run with terminal report | `ai-review --report` |
-| Raw JSON output | `ai-review --json` |
-| Remove inserted comments | `ai-review --clean` |
+| Goal                     | Command                                                                                 |
+|--------------------------|-----------------------------------------------------------------------------------------|
+| Build                    | `npm run build`                                                                         |
+| Type-check only          | `npm run typecheck`                                                                     |
+| Run all tests            | `npm run test`                                                                          |
+| Single-scope test run    | `ai-review --agents "tester" --files "src/main/java/com/example/MyClass.java" --report` |
+| Install globally         | `npm run build && npm install -g .`                                                     |
+| Run with terminal report | `ai-review --report`                                                                    |
+| Raw JSON output          | `ai-review --json`                                                                      |
+| Remove inserted comments | `ai-review --clean`                                                                     |
 
 Tests use **Vitest** and live under `test/` (not compiled into `dist/`).
 

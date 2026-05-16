@@ -2,7 +2,8 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "CommonJS",
-    "moduleResolution": "Node",
+    "moduleResolution": "Node10",
+    "ignoreDeprecations": "5.0",
     "declaration": true,
     "strict": true,
     "esModuleInterop": true,

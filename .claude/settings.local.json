@@ -3,15 +3,14 @@
     "allow": [
       "Bash(npm run *)",
       "Bash(npm test *)",
-      "WebFetch(domain:docs.ollama.com)",
       "WebSearch",
-      "WebFetch(domain:ollama.com)",
       "Bash(npx vitest *)",
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\karol\\\\IdeaProjects\\\\ai-review\\\\src\" -File)",
       "Bash(Select-Object Name)",
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\karol\\\\IdeaProjects\\\\ai-review\" -Force)",
       "Bash(Select-Object -First 20)",
-      "Bash(grep -E \"\\\\.\\(ts|js\\)$\")"
+      "Bash(grep -E \"\\\\.\\(ts|js\\)$\")",
+      "Bash(npx tsc *)"
     ]
   }
 }
