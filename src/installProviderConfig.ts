@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { join } from "node:path";
+import { homedir } from "node:os";
 import { type ProviderKind, PROVIDER_KINDS } from "./llmClient";
 
 export { type ProviderKind, PROVIDER_KINDS };
@@ -117,8 +118,10 @@ function parseInstallProviderConfigObject(value: unknown): InstallProviderConfig
   return { provider, model: model.trim(), apiKeyEnv: apiKeyEnv.trim() };
 }
 
-export function getInstallProviderConfigPath(moduleDir: string = __dirname): string {
-  return resolve(moduleDir, "..", INSTALL_PROVIDER_CONFIG_FILE_NAME);
+export const INSTALL_PROVIDER_CONFIG_DIR = join(homedir(), ".ai-review");
+
+export function getInstallProviderConfigPath(configDir: string = INSTALL_PROVIDER_CONFIG_DIR): string {
+  return join(configDir, INSTALL_PROVIDER_CONFIG_FILE_NAME);
 }
 
 export function loadInstallProviderConfig(filePath: string): InstallProviderConfig {

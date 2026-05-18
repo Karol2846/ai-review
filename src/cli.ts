@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-import {readFileSync} from "node:fs";
 import {homedir} from "node:os";
 import {join, resolve} from "node:path";
 
@@ -48,6 +47,7 @@ export interface CliRuntimeDependencies {
     repoRootPath: string,
     agentNames: readonly string[]
   ) => Promise<LoadAgentInstructionsResult>;
+  readonly resolveLanguageModel: (writeStdout: (m: string) => void) => Promise<LanguageModel>;
   readonly runReviewPipeline: (input: RunReviewPipelineInput) => Promise<RunReviewPipelineResult>;
   readonly renderReport: typeof renderReport;
   readonly applyAnnotations: (
@@ -242,18 +242,6 @@ function writeDebug(debug: boolean, message: string, writeStderr: (m: string) =>
   if (debug) writeStderr(`DEBUG: ${message}`);
 }
 
-function resolveLanguageModel(): LanguageModel {
-  const configPath = getInstallProviderConfigPath(__dirname);
-  try {
-    const config = loadInstallProviderConfig(configPath);
-    return createLanguageModel(config);
-  } catch (error) {
-    throw new Error(
-      `ai-review is not configured (${(error as Error).message}). Re-run 'npm install -g ai-review' to run the install wizard.`
-    );
-  }
-}
-
 function defaultDependencies(): CliRuntimeDependencies {
   return {
     parseArgs: parseCliArgs,
@@ -264,6 +252,25 @@ function defaultDependencies(): CliRuntimeDependencies {
     getHeadSha: async () => (await runGit(["rev-parse", "HEAD"])).trim(),
     getChangedFiles,
     loadAgentInstructions: loadAgentInstructionsFromDisk,
+    resolveLanguageModel: async (writeStdout) => {
+      const configPath = getInstallProviderConfigPath();
+      try {
+        return createLanguageModel(loadInstallProviderConfig(configPath));
+      } catch {
+        if (!process.stdin.isTTY) {
+          throw new Error(
+            "ai-review is not configured. Run ai-review in an interactive terminal to complete setup."
+          );
+        }
+        writeStdout("ai-review is not configured. Starting setup wizard...");
+        const { runSetupWizard, saveWizardConfig } = await import("./setupWizard");
+        const wizardResult = await runSetupWizard();
+        const savedPath = await saveWizardConfig(wizardResult);
+        writeStdout(`\nConfiguration saved to ${savedPath}`);
+        writeStdout(`Set ${wizardResult.apiKeyEnv} in your shell, then re-run ai-review.`);
+        process.exit(0);
+      }
+    },
     runReviewPipeline,
     renderReport,
     applyAnnotations,
@@ -375,7 +382,7 @@ export async function runCli(
     );
     debugWarnings.push(...instructionsResult.warnings);
 
-    const model = resolveLanguageModel();
+    const model = await deps.resolveLanguageModel(deps.writeStdout);
 
     const reviewResult = await deps.runReviewPipeline({
       repoRootPath,

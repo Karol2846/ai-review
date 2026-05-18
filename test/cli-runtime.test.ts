@@ -9,7 +9,9 @@ import type { AggregatedFinding } from "../src/aggregator";
 import {
   INSTALL_PROVIDER_CONFIG_FILE_NAME,
   getInstallProviderConfigPath,
+  loadInstallProviderConfig,
 } from "../src/installProviderConfig";
+import { createLanguageModel } from "../src/llmClient";
 import type {
   ReviewPipelineWarning,
   RunReviewPipelineInput,
@@ -17,7 +19,7 @@ import type {
 } from "../src/reviewPipeline";
 import type { RoutingRuntimeConfig } from "../src/routingTypes";
 
-const installProviderConfigPath = getInstallProviderConfigPath(resolve(process.cwd(), "src"));
+const installProviderConfigPath = getInstallProviderConfigPath(process.cwd());
 
 const VALID_INSTALL_CONFIG = JSON.stringify({
   provider: "openai-compatible",
@@ -121,6 +123,7 @@ interface RuntimeTestDeps {
   readonly renderReport: ReturnType<typeof vi.fn<CliRuntimeDependencies["renderReport"]>>;
   readonly applyAnnotations: ReturnType<typeof vi.fn<CliRuntimeDependencies["applyAnnotations"]>>;
   readonly cleanAnnotations: ReturnType<typeof vi.fn<CliRuntimeDependencies["cleanAnnotations"]>>;
+  readonly resolveLanguageModel: ReturnType<typeof vi.fn<CliRuntimeDependencies["resolveLanguageModel"]>>;
 }
 
 function createRuntimeDeps(): RuntimeTestDeps {
@@ -165,6 +168,11 @@ function createRuntimeDeps(): RuntimeTestDeps {
       cleanedFilesCount: 2,
       cleanedLineCount: 6,
     });
+  const resolveLanguageModel = vi
+    .fn<CliRuntimeDependencies["resolveLanguageModel"]>()
+    .mockImplementation(async () =>
+      createLanguageModel(loadInstallProviderConfig(installProviderConfigPath))
+    );
 
   return {
     overrides: {
@@ -180,6 +188,7 @@ function createRuntimeDeps(): RuntimeTestDeps {
       renderReport,
       applyAnnotations,
       cleanAnnotations,
+      resolveLanguageModel,
     },
     writeStdout,
     writeStderr,
@@ -193,6 +202,7 @@ function createRuntimeDeps(): RuntimeTestDeps {
     renderReport,
     applyAnnotations,
     cleanAnnotations,
+    resolveLanguageModel,
   };
 }
 

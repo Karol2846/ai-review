@@ -24,10 +24,10 @@ function writeTempConfig(content: unknown): string {
 }
 
 describe("getInstallProviderConfigPath", () => {
-  it("resolves config path relative to package install directory", () => {
-    const moduleDir = resolve("tmp", "ai-review", "dist");
-    const configPath = getInstallProviderConfigPath(moduleDir);
-    expect(configPath).toBe(join(moduleDir, "..", INSTALL_PROVIDER_CONFIG_FILE_NAME));
+  it("resolves config path inside the given config directory", () => {
+    const configDir = resolve("tmp", "ai-review-config");
+    const configPath = getInstallProviderConfigPath(configDir);
+    expect(configPath).toBe(join(configDir, INSTALL_PROVIDER_CONFIG_FILE_NAME));
   });
 });
 
