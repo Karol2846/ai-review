@@ -10,7 +10,8 @@
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\karol\\\\IdeaProjects\\\\ai-review\" -Force)",
       "Bash(Select-Object -First 20)",
       "Bash(grep -E \"\\\\.\\(ts|js\\)$\")",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(dir *)"
     ]
   }
 }

@@ -23,13 +23,13 @@ Supports OpenAI-compatible endpoints (OpenAI, Groq, OpenRouter, etc.), Anthropic
 npm install -g ai-review
 ```
 
-During install, an interactive wizard prompts for:
+The `npm install -g` step is non-interactive — it only copies bundled agents/skills into `~/.copilot/`. The provider setup wizard runs on the **first invocation of `ai-review`** in an interactive terminal and prompts for:
 1. **Provider kind**: `openai-compatible`, `anthropic`, `google`, or `bedrock`
 2. **Model name**: e.g. `gpt-4o`, `claude-sonnet-4-5`, `gemini-2.0-flash`, `us.amazon.nova-pro-v1:0`
 3. **API key env var name**: the environment variable that holds your API key (e.g. `OPENAI_API_KEY`)
 4. **Base URL** (openai-compatible only, optional): for Groq, OpenRouter, or self-hosted endpoints
 
-The wizard writes `.ai-review-install-provider.json` to the install directory. If the config is missing or corrupt at runtime, `ai-review` will error and ask you to re-run `npm install -g ai-review`.
+The wizard writes `~/.ai-review/.ai-review-install-provider.json`. After the wizard saves the config, set the chosen API key env var in your shell and re-run `ai-review`. If `ai-review` is invoked without a TTY (CI, Docker, `npm install --ignore-scripts`) before the config exists, it errors with a message asking you to run it in an interactive terminal first.
 
 Before running, export the API key you configured:
 ```bash
@@ -51,7 +51,7 @@ npm run test
 
 - Source entrypoint: `src/cli.ts` (CLI) and `src/index.ts` (library consumers)
 - Package CLI entrypoint: `dist/cli.js` (`package.json#bin.ai-review`)
-- Provider selection is install-time only — no CLI provider flags.
+- Provider is selected via the first-run setup wizard (`src/setupWizard.ts`) — no CLI provider flags.
 
 ---
 
@@ -245,13 +245,14 @@ ai-review/
 │   ├── llmProvider.ts         # LlmProviderError class + error code types
 │   ├── llmClient.ts           # createLanguageModel — Vercel AI SDK factory
 │   ├── llmAdapter.ts          # generateFindings — wraps generateObject
-│   ├── installProviderConfig.ts  # Read/validate .ai-review-install-provider.json
+│   ├── installProviderConfig.ts  # Read/validate ~/.ai-review/.ai-review-install-provider.json
+│   ├── setupWizard.ts        # First-run interactive provider setup
 │   └── findingSchema.ts       # Zod schema for Finding + FindingsArray
 ├── dist/                  # compiled JS + d.ts (npm/CLI runtime)
 ├── schemas/
 │   └── finding.schema.json
 ├── scripts/
-│   └── postinstall.js     # Install-time provider wizard
+│   └── postinstall.js     # Non-interactive: copies agents/skills to ~/.copilot/
 ├── package.json
 └── README.md
 ```

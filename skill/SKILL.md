@@ -7,8 +7,8 @@ allowed-tools: shell, view, edit
 # ai-review — Multi-Agent Code Review Skill
 
 When invoked, run `ai-review` from PATH. If unavailable, run `node dist/cli.js` from this repository root.
-Provider choice is install-time only (`copilot` or `ollama`) via postinstall default configuration.
-No CLI provider flags/options exist in this MVP. Runtime uses the install-time default.
+Provider is configured on first run via an interactive wizard (`openai-compatible`, `anthropic`, `google`, or `bedrock`) and stored in `~/.ai-review/.ai-review-install-provider.json`.
+No CLI provider flags exist — runtime uses the saved config.
 
 ## How It Works
 

@@ -38,7 +38,7 @@ Tests use **Vitest** and live under `test/` (not compiled into `dist/`).
 
 `src/llmProvider.ts` — error types only: `LlmProviderError` class and `LlmProviderErrorCode` union. No provider interface or `sendPrompt` method.
 
-Provider is selected **at install time** by `scripts/postinstall.js`, stored as `.ai-review-install-provider.json` next to the compiled binary. At runtime `src/installProviderConfig.ts` reads this file; if missing/invalid, the CLI throws and prompts the user to re-run the install wizard (no automatic fallback).
+Provider is selected by an **interactive setup wizard** in `src/setupWizard.ts`, triggered on first CLI run when no config is found. Config is stored at `~/.ai-review/.ai-review-install-provider.json` (path defined by `INSTALL_PROVIDER_CONFIG_DIR` in `src/installProviderConfig.ts`). `scripts/postinstall.js` is non-interactive — it only copies `agents/` and `skill/` into `~/.copilot/`. At runtime `src/cli.ts` reads the config via `loadInstallProviderConfig`; if missing and stdin is a TTY, the wizard runs and exits asking the user to set the API key env var and re-run; if missing and non-TTY (CI, Docker, `--ignore-scripts`), the CLI errors out.
 
 ### Routing and configuration
 
