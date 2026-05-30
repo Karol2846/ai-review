@@ -1,5 +1,5 @@
 {
-  "name": "ai-review",
+  "name": "@karol2846/ai-review",
   "version": "0.1.0",
   "description": "Multi-agent local code review powered by the Vercel AI SDK",
   "license": "MIT",
