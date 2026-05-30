@@ -2,7 +2,7 @@
 
 Multi-agent code review powered by the **Vercel AI SDK**.  
 Run **before creating a PR** (or when reviewing someone else's branch) to get focused AI critique from 5 specialized agents — each looking at your diff through a different lens.  
-Supports OpenAI-compatible endpoints (OpenAI, Groq, OpenRouter, etc.), Anthropic, Google, and AWS Bedrock.
+Supports OpenAI-compatible endpoints (OpenAI, Groq, OpenRouter, etc.), Anthropic, and Google.
 
 ---
 
@@ -11,7 +11,7 @@ Supports OpenAI-compatible endpoints (OpenAI, Groq, OpenRouter, etc.), Anthropic
 | Tool        | Required | Notes                                                                    |
 |-------------|----------|--------------------------------------------------------------------------|
 | `git`       | Yes      | Diff computation                                                         |
-| `node`      | Yes      | Runtime for the CLI (v18+)                                               |
+| `node`      | Yes      | Runtime for the CLI (v20.12+)                                            |
 | `npm`       | Yes      | Package manager                                                          |
 | LLM API key | Yes      | Env var name configured during install (e.g. `OPENAI_API_KEY`)          |
 
@@ -24,8 +24,8 @@ npm install -g ai-review
 ```
 
 The `npm install -g` step is non-interactive — it only copies bundled agents/skills into `~/.copilot/`. The provider setup wizard runs on the **first invocation of `ai-review`** in an interactive terminal and prompts for:
-1. **Provider kind**: `openai-compatible`, `anthropic`, `google`, or `bedrock`
-2. **Model name**: e.g. `gpt-4o`, `claude-sonnet-4-5`, `gemini-2.0-flash`, `us.amazon.nova-pro-v1:0`
+1. **Provider kind**: `openai-compatible`, `anthropic`, or `google`
+2. **Model name**: e.g. `gpt-4o-mini` (OpenAI), `llama-3.3-70b-versatile` (Groq), `claude-sonnet-4-6` (Anthropic), `gemini-2.0-flash` (Google)
 3. **API key env var name**: the environment variable that holds your API key (e.g. `OPENAI_API_KEY`)
 4. **Base URL** (openai-compatible only, optional): for Groq, OpenRouter, or self-hosted endpoints
 
@@ -78,8 +78,8 @@ ai-review
    │
   ├─ 2. ANALYZE  (parallel batched calls per file × agent)
    │      Each agent receives: diff + bounded file context
-   │      Vercel AI SDK generateObject enforces structured output
-   │      Returns: typed findings array (Zod-validated)
+   │      Vercel AI SDK generateText sends prompt → JSON response
+   │      Response parsed and validated per-record; invalid records dropped
    │
   ├─ 3. AGGREGATE
    │      Merge all JSONs, deduplicate by fingerprint,
@@ -123,7 +123,7 @@ All agents are critical and pragmatic — they name exact classes and methods, a
     → Move validation into ReferenceCode.create() factory method.
 
 ─────────────────────────────────────────
-3 findings across 2 files from 3 agents
+3 findings across 2 files from 3 agents  (critical: 1  warning: 2)
 ```
 
 ### TODO annotation (default)
@@ -241,13 +241,13 @@ ai-review/
 │   ├── annotator.ts           # Insert / remove TODO comments
 │   ├── git.ts                 # git merge-base and changed-files helpers
 │   ├── defaultConfig.ts       # Default agent-to-glob routing config
-│   ├── config.ts              # Load + merge .ai-reviewrc.json overrides
 │   ├── llmProvider.ts         # LlmProviderError class + error code types
 │   ├── llmClient.ts           # createLanguageModel — Vercel AI SDK factory
-│   ├── llmAdapter.ts          # generateFindings — wraps generateObject
+│   ├── llmAdapter.ts          # generateFindings — wraps generateText + response parsing
+│   ├── responseParser.ts      # parseModelResponse — extracts JSON findings from LLM text
 │   ├── installProviderConfig.ts  # Read/validate ~/.ai-review/.ai-review-install-provider.json
 │   ├── setupWizard.ts        # First-run interactive provider setup
-│   └── findingSchema.ts       # Zod schema for Finding + FindingsArray
+│   └── findingSchema.ts       # Finding TypeScript interface
 ├── dist/                  # compiled JS + d.ts (npm/CLI runtime)
 ├── schemas/
 │   └── finding.schema.json
@@ -261,9 +261,7 @@ ai-review/
 
 ## Stack
 
-**LLM**: [Vercel AI SDK](https://sdk.vercel.ai/) (`ai` package) with provider adapters `@ai-sdk/openai`, `@ai-sdk/anthropic`, `@ai-sdk/google`, `@ai-sdk/amazon-bedrock`. Structured output uses `generateObject` with a [Zod](https://zod.dev/) schema — no JSON parsing, no regex.
-
-**Validation**: [Zod v4](https://zod.dev/) for finding schema and install config validation.
+**LLM**: [Vercel AI SDK](https://sdk.vercel.ai/) (`ai` package) with provider adapters `@ai-sdk/openai`, `@ai-sdk/anthropic`, `@ai-sdk/google`. Uses `generateText` with a structured JSON prompt; findings are extracted and validated by a hand-rolled response parser.
 
 Agents are tuned for: **Java 17+, Spring Boot, Spock/Groovy tests, PostgreSQL, MongoDB, SQS/SNS, DDD, REST APIs**.
 
