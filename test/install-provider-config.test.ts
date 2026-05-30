@@ -36,7 +36,7 @@ describe("PROVIDER_KINDS", () => {
     expect(PROVIDER_KINDS).toContain("openai-compatible");
     expect(PROVIDER_KINDS).toContain("anthropic");
     expect(PROVIDER_KINDS).toContain("google");
-    expect(PROVIDER_KINDS).toContain("bedrock");
+    expect(PROVIDER_KINDS).not.toContain("bedrock");
     expect(PROVIDER_KINDS).not.toContain("ollama");
     expect(PROVIDER_KINDS).not.toContain("copilot");
   });

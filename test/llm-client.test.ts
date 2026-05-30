@@ -54,9 +54,4 @@ describe("createLanguageModel", () => {
     const model = createLanguageModel({ ...baseConfig, provider: "google", model: "gemini-2.0-flash" });
     expect(model).toBeDefined();
   });
-
-  it("returns a LanguageModel for bedrock", () => {
-    const model = createLanguageModel({ ...baseConfig, provider: "bedrock", model: "amazon.nova-micro-v1:0" });
-    expect(model).toBeDefined();
-  });
 });

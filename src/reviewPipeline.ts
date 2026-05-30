@@ -152,7 +152,7 @@ export async function runReviewPipeline(
 
   const routedFilesByAgent = routeFilesToAgents(contextFilePaths, input.routingConfig);
 
-  for (const [agent, files] of Object.entries(routedFilesByAgent)) {
+  for (const [agent, files] of routedFilesByAgent) {
     if (files.length > 0) {
       input.onProgress?.(`${agent}: analyzing ${files.length} file${files.length === 1 ? "" : "s"}...`);
     }
