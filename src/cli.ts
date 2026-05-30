@@ -4,6 +4,9 @@ import {homedir} from "node:os";
 import {join, resolve} from "node:path";
 
 import type {LanguageModel} from "ai";
+
+/** Returned by resolveLanguageModel when the setup wizard ran and the user must re-run. */
+export const SETUP_COMPLETED = Symbol("setup-completed");
 import {execa} from "execa";
 import micromatch from "micromatch";
 
@@ -47,7 +50,7 @@ export interface CliRuntimeDependencies {
     repoRootPath: string,
     agentNames: readonly string[]
   ) => Promise<LoadAgentInstructionsResult>;
-  readonly resolveLanguageModel: (writeStdout: (m: string) => void) => Promise<LanguageModel>;
+  readonly resolveLanguageModel: (writeStdout: (m: string) => void) => Promise<LanguageModel | typeof SETUP_COMPLETED>;
   readonly runReviewPipeline: (input: RunReviewPipelineInput) => Promise<RunReviewPipelineResult>;
   readonly renderReport: typeof renderReport;
   readonly applyAnnotations: (
@@ -268,7 +271,7 @@ function defaultDependencies(): CliRuntimeDependencies {
         const savedPath = await saveWizardConfig(wizardResult);
         writeStdout(`\nConfiguration saved to ${savedPath}`);
         writeStdout(`Set ${wizardResult.apiKeyEnv} in your shell, then re-run ai-review.`);
-        process.exit(0);
+        return SETUP_COMPLETED;
       }
     },
     runReviewPipeline,
@@ -382,7 +385,11 @@ export async function runCli(
     );
     debugWarnings.push(...instructionsResult.warnings);
 
-    const model = await deps.resolveLanguageModel(deps.writeStdout);
+    const modelOrSetup = await deps.resolveLanguageModel(deps.writeStdout);
+    if (modelOrSetup === SETUP_COMPLETED) {
+      return 0;
+    }
+    const model = modelOrSetup;
 
     const reviewResult = await deps.runReviewPipeline({
       repoRootPath,

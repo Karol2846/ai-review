@@ -140,10 +140,24 @@ export function renderReport(
 
   const uniqueFiles = new Set(sortedFindings.map((finding) => finding.file)).size;
   const uniqueAgents = new Set(sortedFindings.map((finding) => finding.agent)).size;
+
+  const severityCounts: Record<string, number> = { critical: 0, warning: 0, info: 0 };
+  for (const finding of sortedFindings) {
+    const sev = normalizedSeverity(finding.severity);
+    if (sev !== "unknown") {
+      severityCounts[sev] = (severityCounts[sev] ?? 0) + 1;
+    }
+  }
+
+  const severityParts = (["critical", "warning", "info"] as const)
+    .filter((sev) => (severityCounts[sev] ?? 0) > 0)
+    .map((sev) => `${sev}: ${String(severityCounts[sev])}`);
+
   lines.push(chalkInstance.dim(REPORT_DIVIDER));
   lines.push(
     chalkInstance.dim(
       `${sortedFindings.length} findings across ${uniqueFiles} files from ${uniqueAgents} agents`
+      + (severityParts.length > 0 ? `  (${severityParts.join("  ")})` : "")
     )
   );
 

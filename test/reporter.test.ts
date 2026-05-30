@@ -49,7 +49,7 @@ describe("renderReport", () => {
     expect(lines).toContain("━━━ src/a.ts ━━━");
     expect(lines).toContain("━━━ src/z.ts ━━━");
     expect(lines.at(-2)).toBe("─────────────────────────────────────────");
-    expect(lines.at(-1)).toBe("3 findings across 2 files from 2 agents");
+    expect(lines.at(-1)).toBe("3 findings across 2 files from 2 agents  (critical: 1  warning: 1  info: 1)");
   });
 
   it("renders suggestion line only for non-empty trimmed suggestions", () => {

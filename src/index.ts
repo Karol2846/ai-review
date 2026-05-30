@@ -13,7 +13,7 @@ export { runAgentBatches } from "./runner";
 export { aggregateFindings, buildFindingFingerprint, isFindingSeverity } from "./aggregator";
 export { runReviewPipeline } from "./reviewPipeline";
 export { formatCliUsage, parseCliArgs, CliArgsError } from "./cliArgs";
-export { main as runCliMain, runCli } from "./cli";
+export { runCli } from "./cli";
 export { renderReport } from "./reporter";
 export { applyAnnotations, cleanAnnotations, AnnotatorError } from "./annotator";
 export { AGENT_NAMES } from "./routingTypes";

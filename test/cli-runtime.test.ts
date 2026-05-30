@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { runCli, type CliRuntimeDependencies } from "../src/cli";
+import { runCli, type CliRuntimeDependencies, SETUP_COMPLETED } from "../src/cli";
 import type { AggregatedFinding } from "../src/aggregator";
 import {
   INSTALL_PROVIDER_CONFIG_FILE_NAME,
@@ -449,5 +449,15 @@ describe("runCli runtime flow", () => {
     expect(exitCode).toBe(0);
     const stderrLines = deps.writeStderr.mock.calls.map(([m]) => String(m));
     expect(stderrLines.every((l) => !l.startsWith("DEBUG:"))).toBe(true);
+  });
+
+  it("returns exit code 0 without running the pipeline when resolveLanguageModel signals setup-completed", async () => {
+    const deps = createRuntimeDeps();
+    deps.resolveLanguageModel.mockResolvedValue(SETUP_COMPLETED);
+
+    const exitCode = await runCli(["--json"], deps.overrides);
+
+    expect(exitCode).toBe(0);
+    expect(deps.runReviewPipeline).not.toHaveBeenCalled();
   });
 });
