@@ -25,17 +25,15 @@ async function promptProvider(rl: Interface): Promise<ProviderKind> {
   process.stdout.write("  1) openai-compatible  (OpenAI, Groq, OpenRouter, any OpenAI-compatible endpoint)\n");
   process.stdout.write("  2) anthropic\n");
   process.stdout.write("  3) google\n");
-  process.stdout.write("  4) bedrock\n");
 
   for (;;) {
-    const answer = (await ask(rl, "[1/2/3/4]: ")).trim();
+    const answer = (await ask(rl, "[1/2/3]: ")).trim();
     switch (answer) {
       case "1": case "openai-compatible": return "openai-compatible";
       case "2": case "anthropic":         return "anthropic";
       case "3": case "google":            return "google";
-      case "4": case "bedrock":           return "bedrock";
       default:
-        process.stderr.write(`Invalid selection "${answer}". Enter 1, 2, 3, or 4.\n`);
+        process.stderr.write(`Invalid selection "${answer}". Enter 1, 2, or 3.\n`);
     }
   }
 }
@@ -68,9 +66,20 @@ async function promptBaseURL(rl: Interface): Promise<string | undefined> {
   }
 }
 
+function modelHint(provider: ProviderKind): string {
+  switch (provider) {
+    case "openai-compatible":
+      return "Model name (e.g. gpt-4o-mini; for Groq: llama-3.3-70b-versatile): ";
+    case "anthropic":
+      return "Model name (e.g. claude-sonnet-4-6): ";
+    case "google":
+      return "Model name (e.g. gemini-2.0-flash): ";
+  }
+}
+
 async function collectConfig(rl: Interface): Promise<SetupWizardResult> {
   const provider = await promptProvider(rl);
-  const model = await promptNonEmpty(rl, "Model name: ");
+  const model = await promptNonEmpty(rl, modelHint(provider));
   const apiKeyEnv = await promptNonEmpty(
     rl,
     "Environment variable name for API key [AI_REVIEW_API_KEY]: ",
