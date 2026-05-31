@@ -52,8 +52,6 @@ const fakeModel = new MockLanguageModelV3({
 function createRoutingConfig(): RoutingRuntimeConfig {
   return {
     unmatchedFilesPolicy: "skip",
-    userConfigMergeMode: "override",
-    invalidUserConfigPolicy: "fallback_with_warning",
     agentGlobs: {
       tester: ["**/*.ts"],
       architect: ["src/**/*.ts"],

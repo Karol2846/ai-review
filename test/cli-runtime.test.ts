@@ -38,8 +38,6 @@ function removeInstallProviderConfig(): void {
 function createRoutingConfig(): RoutingRuntimeConfig {
   return {
     unmatchedFilesPolicy: "skip",
-    userConfigMergeMode: "override",
-    invalidUserConfigPolicy: "fallback_with_warning",
     agentGlobs: {
       tester: ["**/*.ts"],
       architect: ["**/*.ts"],
@@ -123,6 +121,7 @@ interface RuntimeTestDeps {
   readonly renderReport: ReturnType<typeof vi.fn<CliRuntimeDependencies["renderReport"]>>;
   readonly applyAnnotations: ReturnType<typeof vi.fn<CliRuntimeDependencies["applyAnnotations"]>>;
   readonly cleanAnnotations: ReturnType<typeof vi.fn<CliRuntimeDependencies["cleanAnnotations"]>>;
+  readonly readRepoConfigFile: ReturnType<typeof vi.fn<CliRuntimeDependencies["readRepoConfigFile"]>>;
   readonly resolveLanguageModel: ReturnType<typeof vi.fn<CliRuntimeDependencies["resolveLanguageModel"]>>;
 }
 
@@ -173,6 +172,9 @@ function createRuntimeDeps(): RuntimeTestDeps {
     .mockImplementation(async () =>
       createLanguageModel(loadInstallProviderConfig(installProviderConfigPath))
     );
+  const readRepoConfigFile = vi
+    .fn<CliRuntimeDependencies["readRepoConfigFile"]>()
+    .mockReturnValue(null);
 
   return {
     overrides: {
@@ -188,6 +190,7 @@ function createRuntimeDeps(): RuntimeTestDeps {
       renderReport,
       applyAnnotations,
       cleanAnnotations,
+      readRepoConfigFile,
       resolveLanguageModel,
     },
     writeStdout,
@@ -202,6 +205,7 @@ function createRuntimeDeps(): RuntimeTestDeps {
     renderReport,
     applyAnnotations,
     cleanAnnotations,
+    readRepoConfigFile,
     resolveLanguageModel,
   };
 }

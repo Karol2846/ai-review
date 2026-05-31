@@ -17,11 +17,14 @@ import {
   cleanAnnotations,
   type CleanAnnotationsResult,
 } from "./annotator";
+import {readFileSync} from "node:fs";
+
 import {CliArgsError, type CliOptions, formatCliUsage, parseCliArgs} from "./cliArgs";
 import {defaultRoutingConfig} from "./defaultConfig";
 import {getChangedFiles, getMergeBase} from "./git";
 import {loadInstallProviderConfig, getInstallProviderConfigPath} from "./installProviderConfig";
 import {createLanguageModel} from "./llmClient";
+import {parseRepoConfig, mergeRoutingConfig, RepoConfigError, REPO_CONFIG_FILE_NAME} from "./repoConfig";
 import {renderReport} from "./reporter";
 import {runReviewPipeline, type RunReviewPipelineInput, type RunReviewPipelineResult} from "./reviewPipeline";
 import type {AgentInstructionsByAgent, RunnerRetryConfig} from "./runner";
@@ -58,6 +61,7 @@ export interface CliRuntimeDependencies {
     repoRootPath: string
   ) => Promise<ApplyAnnotationsResult>;
   readonly cleanAnnotations: (repoRootPath: string) => Promise<CleanAnnotationsResult>;
+  readonly readRepoConfigFile: (repoRoot: string) => string | null;
   readonly writeStdout: (message: string) => void;
   readonly writeStderr: (message: string) => void;
 }
@@ -278,6 +282,14 @@ function defaultDependencies(): CliRuntimeDependencies {
     renderReport,
     applyAnnotations,
     cleanAnnotations,
+    readRepoConfigFile: (repoRoot: string): string | null => {
+      try {
+        return readFileSync(join(repoRoot, REPO_CONFIG_FILE_NAME), "utf8");
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+        throw err;
+      }
+    },
     writeStdout: (message: string) => process.stdout.write(`${message}\n`),
     writeStderr: (message: string) => process.stderr.write(`${message}\n`),
   };
@@ -359,7 +371,24 @@ export async function runCli(
       return 0;
     }
 
-    const routingConfig = defaultRoutingConfig;
+    let routingConfig: RoutingRuntimeConfig;
+    try {
+      const repoConfigRaw = deps.readRepoConfigFile(repoRootPath);
+      const repoConfigOverride = parseRepoConfig(repoConfigRaw);
+      routingConfig = mergeRoutingConfig(defaultRoutingConfig, repoConfigOverride);
+      if (options.debug && repoConfigOverride !== null) {
+        const extendedAgents = Object.keys(repoConfigOverride.agentGlobs ?? {});
+        deps.writeStderr(
+          `DEBUG: loaded ${REPO_CONFIG_FILE_NAME} — extended routing for: ${extendedAgents.join(", ") || "none"}`
+        );
+      }
+    } catch (err) {
+      if (err instanceof RepoConfigError) {
+        deps.writeStderr(`Error: ${err.message}`);
+        return 1;
+      }
+      throw err;
+    }
 
     const filteredRoutingConfig = filterRoutingConfigByAgents(
       routingConfig,

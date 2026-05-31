@@ -24,6 +24,12 @@ export {
   getInstallProviderConfigPath,
   loadInstallProviderConfig,
 } from "./installProviderConfig";
+export {
+  REPO_CONFIG_FILE_NAME,
+  RepoConfigError,
+  parseRepoConfig,
+  mergeRoutingConfig,
+} from "./repoConfig";
 export { createLanguageModel } from "./llmClient";
 export type {
   AggregatedFinding,
@@ -86,13 +92,3 @@ export type {
   ApplyAnnotationsResult,
   CleanAnnotationsResult,
 } from "./annotator";
-
-//TODO: next:
-// - try this tool localy ;). I'll probably go with Groq and some cheep model
-// - make UX better while tool works
-//    - I would like to see info how many files each agents is reviewing
-//    - some loading circle during the process (I want to know that tool is working)
-//    - and at the end some small note how many finding we have, e.g:
-//                                                critical - 15
-//                                                warnings - 17
-//                                                info - 20

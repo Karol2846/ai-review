@@ -2,8 +2,6 @@ import { type RoutingRuntimeConfig } from "./routingTypes";
 
 export const defaultRoutingConfig = {
   unmatchedFilesPolicy: "skip",
-  userConfigMergeMode: "override",
-  invalidUserConfigPolicy: "fallback_with_warning",
   agentGlobs: {
     "clean-coder": [
       "**/src/**/*.{ts,tsx,js,jsx,java,kt,groovy,go,py}",

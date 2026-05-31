@@ -7,8 +7,6 @@ function createConfig(agentGlobs: Record<string, readonly string[]>): RoutingRun
   return {
     agentGlobs,
     unmatchedFilesPolicy: "skip",
-    userConfigMergeMode: "override",
-    invalidUserConfigPolicy: "fallback_with_warning",
   };
 }
 
