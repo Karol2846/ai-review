@@ -41,7 +41,7 @@ Provider is selected by an **interactive setup wizard** in `src/setupWizard.ts`,
 
 ### Routing and configuration
 
-Changed files are matched to agents by glob patterns via `src/router.ts` (`routeFilesToAgents`, uses `micromatch`). Types live in `src/routingTypes.ts` (`RoutingRuntimeConfig`, `AgentGlobsMap`, `AgentName`). Default agent-to-file-glob routing is in `src/defaultConfig.ts`. Per-repo routing overrides via `.ai-reviewrc.json` are not yet implemented — the default config is always used.
+Changed files are matched to agents by glob patterns via `src/router.ts` (`routeFilesToAgents`, uses `micromatch`). Types live in `src/routingTypes.ts` (`RoutingRuntimeConfig`, `AgentGlobsMap`, `AgentName`). Default agent-to-file-glob routing is in `src/defaultConfig.ts`. Per-repo routing overrides via `ai-review.json` in the repo root are loaded and merged by `src/repoConfig.ts` (`parseRepoConfig`, `mergeRoutingConfig`). Phase 1 supports only `routing.agentGlobs` — user globs are **appended** to the defaults (extend semantics, with dedup). Unknown keys or agent names cause a hard-fail. Future phases will add `model`, `agents`, `severity`, and `exclude` sections.
 
 ### Agent instructions
 

@@ -31,9 +31,15 @@ The `npm install -g` step is non-interactive — it only copies bundled agents/s
 
 The wizard writes `~/.ai-review/.ai-review-install-provider.json`. After the wizard saves the config, set the chosen API key env var in your shell and re-run `ai-review`. If `ai-review` is invoked without a TTY (CI, Docker, `npm install --ignore-scripts`) before the config exists, it errors with a message asking you to run it in an interactive terminal first.
 
-Before running, export the API key you configured:
+To switch provider or model later, delete the config file and re-run `ai-review`:
 ```bash
-export OPENAI_API_KEY=sk-...   # or whatever variable name you chose
+rm ~/.ai-review/.ai-review-install-provider.json
+ai-review
+```
+
+Before running, export the API key you configured (the variable name you chose in step 3):
+```bash
+export AI_REVIEW_API_KEY=sk-...   # or ANTHROPIC_API_KEY, OPENAI_API_KEY, etc.
 ```
 
 ---
@@ -241,6 +247,7 @@ ai-review/
 │   ├── annotator.ts           # Insert / remove TODO comments
 │   ├── git.ts                 # git merge-base and changed-files helpers
 │   ├── defaultConfig.ts       # Default agent-to-glob routing config
+│   ├── repoConfig.ts          # Load + validate + merge per-repo ai-review.json
 │   ├── llmProvider.ts         # LlmProviderError class + error code types
 │   ├── llmClient.ts           # createLanguageModel — Vercel AI SDK factory
 │   ├── llmAdapter.ts          # generateFindings — wraps generateText + response parsing
@@ -265,7 +272,28 @@ ai-review/
 
 Agents are tuned for: **Java 17+, Spring Boot, Spock/Groovy tests, PostgreSQL, MongoDB, SQS/SNS, DDD, REST APIs**.
 
-To customize an agent, edit the corresponding file in `agents/` in the project directory or `~/.copilot/agents/` (copied there during install).
+To customize an agent's instructions, edit the corresponding file in `agents/` in the project directory or `~/.copilot/agents/` (copied there during install).
+
+---
+
+## Per-repo config (`ai-review.json`)
+
+Create `ai-review.json` in your project root to extend the default routing for your repo's structure. Currently supports `routing.agentGlobs` — your globs are **appended** to the defaults for each agent (extend semantics, with dedup). Agents not listed are unchanged.
+
+```json
+{
+  "routing": {
+    "agentGlobs": {
+      "ddd-reviewer": ["**/internal/core/**/*.java"],
+      "performance":  ["**/infra/cache/**/*.java"]
+    }
+  }
+}
+```
+
+**Allowed agent names:** `clean-coder`, `tester`, `architect`, `ddd-reviewer`, `performance`
+
+Unknown keys or agent names cause a hard-fail with a clear error message. If the file is absent, defaults apply unchanged.
 
 ---
 
