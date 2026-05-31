@@ -9,6 +9,11 @@ import {
   type ProviderKind,
 } from "./installProviderConfig";
 
+//FIXME: Is Circle K supports github models? If not - this can be thrown away :(
+const GITHUB_MODELS_BASE_URL = "https://models.inference.ai.azure.com";
+
+type WizardSelection = ProviderKind | "github-models";
+
 export interface SetupWizardResult {
   readonly provider: ProviderKind;
   readonly model: string;
@@ -20,20 +25,22 @@ function ask(rl: Interface, question: string): Promise<string> {
   return new Promise((resolve) => rl.question(question, resolve));
 }
 
-async function promptProvider(rl: Interface): Promise<ProviderKind> {
+async function promptProvider(rl: Interface): Promise<WizardSelection> {
   process.stdout.write("\nSelect provider:\n");
   process.stdout.write("  1) openai-compatible  (OpenAI, Groq, OpenRouter, any OpenAI-compatible endpoint)\n");
   process.stdout.write("  2) anthropic\n");
   process.stdout.write("  3) google\n");
+  process.stdout.write("  4) github-models      (GitHub Models API — use your GitHub PAT)\n");
 
   for (;;) {
-    const answer = (await ask(rl, "[1/2/3]: ")).trim();
+    const answer = (await ask(rl, "[1/2/3/4]: ")).trim();
     switch (answer) {
       case "1": case "openai-compatible": return "openai-compatible";
       case "2": case "anthropic":         return "anthropic";
       case "3": case "google":            return "google";
+      case "4": case "github-models":     return "github-models";
       default:
-        process.stderr.write(`Invalid selection "${answer}". Enter 1, 2, or 3.\n`);
+        process.stderr.write(`Invalid selection "${answer}". Enter 1, 2, 3, or 4.\n`);
     }
   }
 }
@@ -78,15 +85,33 @@ function modelHint(provider: ProviderKind): string {
 }
 
 async function collectConfig(rl: Interface): Promise<SetupWizardResult> {
-  const provider = await promptProvider(rl);
-  const model = await promptNonEmpty(rl, modelHint(provider));
+  const selection = await promptProvider(rl);
+
+  if (selection === "github-models") {
+    const model = await promptNonEmpty(
+      rl,
+      "Model name (e.g. gpt-4o-mini, claude-3.5-sonnet-20241022): "
+    );
+    const apiKeyEnv = await promptNonEmpty(
+      rl,
+      "Environment variable name for your GitHub PAT [GITHUB_TOKEN]: ",
+      "GITHUB_TOKEN"
+    );
+    process.stdout.write(
+      "\nNote: your PAT needs 'models:read' scope (or 'public_repo' for org accounts).\n" +
+      "Generate one at: github.com/settings/tokens\n"
+    );
+    return { provider: "openai-compatible", model, apiKeyEnv, baseURL: GITHUB_MODELS_BASE_URL };
+  }
+
+  const model = await promptNonEmpty(rl, modelHint(selection));
   const apiKeyEnv = await promptNonEmpty(
     rl,
     "Environment variable name for API key [AI_REVIEW_API_KEY]: ",
     "AI_REVIEW_API_KEY"
   );
-  const baseURL = provider === "openai-compatible" ? await promptBaseURL(rl) : undefined;
-  return { provider, model, apiKeyEnv, ...(baseURL !== undefined ? { baseURL } : {}) };
+  const baseURL = selection === "openai-compatible" ? await promptBaseURL(rl) : undefined;
+  return { provider: selection, model, apiKeyEnv, ...(baseURL !== undefined ? { baseURL } : {}) };
 }
 
 export async function runSetupWizard(): Promise<SetupWizardResult> {
