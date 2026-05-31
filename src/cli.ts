@@ -22,7 +22,12 @@ import {readFileSync} from "node:fs";
 import {CliArgsError, type CliOptions, formatCliUsage, parseCliArgs} from "./cliArgs";
 import {defaultRoutingConfig} from "./defaultConfig";
 import {getChangedFiles, getMergeBase} from "./git";
-import {loadInstallProviderConfig, getInstallProviderConfigPath} from "./installProviderConfig";
+import {
+  loadInstallProviderConfig,
+  getInstallProviderConfigPath,
+  mergeProviderConfig,
+  type UserModelConfigOverride,
+} from "./installProviderConfig";
 import {createLanguageModel} from "./llmClient";
 import {parseRepoConfig, mergeRoutingConfig, RepoConfigError, REPO_CONFIG_FILE_NAME} from "./repoConfig";
 import {renderReport} from "./reporter";
@@ -53,7 +58,10 @@ export interface CliRuntimeDependencies {
     repoRootPath: string,
     agentNames: readonly string[]
   ) => Promise<LoadAgentInstructionsResult>;
-  readonly resolveLanguageModel: (writeStdout: (m: string) => void) => Promise<LanguageModel | typeof SETUP_COMPLETED>;
+  readonly resolveLanguageModel: (
+    writeStdout: (m: string) => void,
+    modelOverride: UserModelConfigOverride | null
+  ) => Promise<LanguageModel | typeof SETUP_COMPLETED>;
   readonly runReviewPipeline: (input: RunReviewPipelineInput) => Promise<RunReviewPipelineResult>;
   readonly renderReport: typeof renderReport;
   readonly applyAnnotations: (
@@ -259,10 +267,11 @@ function defaultDependencies(): CliRuntimeDependencies {
     getHeadSha: async () => (await runGit(["rev-parse", "HEAD"])).trim(),
     getChangedFiles,
     loadAgentInstructions: loadAgentInstructionsFromDisk,
-    resolveLanguageModel: async (writeStdout) => {
+    resolveLanguageModel: async (writeStdout, modelOverride) => {
       const configPath = getInstallProviderConfigPath();
+      let installConfig;
       try {
-        return createLanguageModel(loadInstallProviderConfig(configPath));
+        installConfig = loadInstallProviderConfig(configPath);
       } catch {
         if (!process.stdin.isTTY) {
           throw new Error(
@@ -277,6 +286,7 @@ function defaultDependencies(): CliRuntimeDependencies {
         writeStdout(`Set ${wizardResult.apiKeyEnv} in your shell, then re-run ai-review.`);
         return SETUP_COMPLETED;
       }
+      return createLanguageModel(mergeProviderConfig(installConfig, modelOverride));
     },
     runReviewPipeline,
     renderReport,
@@ -372,14 +382,18 @@ export async function runCli(
     }
 
     let routingConfig: RoutingRuntimeConfig;
+    let modelOverride: UserModelConfigOverride | null = null;
     try {
       const repoConfigRaw = deps.readRepoConfigFile(repoRootPath);
       const repoConfigOverride = parseRepoConfig(repoConfigRaw);
-      routingConfig = mergeRoutingConfig(defaultRoutingConfig, repoConfigOverride);
+      routingConfig = mergeRoutingConfig(defaultRoutingConfig, repoConfigOverride?.routing ?? null);
+      modelOverride = repoConfigOverride?.model ?? null;
       if (options.debug && repoConfigOverride !== null) {
-        const extendedAgents = Object.keys(repoConfigOverride.agentGlobs ?? {});
+        const extendedAgents = Object.keys(repoConfigOverride.routing?.agentGlobs ?? {});
+        const modelKeys = modelOverride ? Object.keys(modelOverride) : [];
         deps.writeStderr(
-          `DEBUG: loaded ${REPO_CONFIG_FILE_NAME} — extended routing for: ${extendedAgents.join(", ") || "none"}`
+          `DEBUG: loaded ${REPO_CONFIG_FILE_NAME} — extended routing for: ${extendedAgents.join(", ") || "none"}` +
+            (modelKeys.length > 0 ? `; model override: ${modelKeys.join(", ")}` : "")
         );
       }
     } catch (err) {
@@ -414,7 +428,7 @@ export async function runCli(
     );
     debugWarnings.push(...instructionsResult.warnings);
 
-    const modelOrSetup = await deps.resolveLanguageModel(deps.writeStdout);
+    const modelOrSetup = await deps.resolveLanguageModel(deps.writeStdout, modelOverride);
     if (modelOrSetup === SETUP_COMPLETED) {
       return 0;
     }

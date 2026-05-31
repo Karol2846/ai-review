@@ -1,4 +1,9 @@
 import {
+  type ProviderKind,
+  PROVIDER_KINDS,
+  type UserModelConfigOverride,
+} from "./installProviderConfig";
+import {
   AGENT_NAMES,
   type AgentGlobsMap,
   type RoutingRuntimeConfig,
@@ -7,9 +12,18 @@ import {
 
 export const REPO_CONFIG_FILE_NAME = "ai-review.json";
 
-const ALLOWED_ROOT_KEYS = ["routing"] as const;
+const ALLOWED_ROOT_KEYS = ["routing", "model"] as const;
 const ALLOWED_ROUTING_KEYS = ["agentGlobs"] as const;
+const ALLOWED_MODEL_KEYS = ["provider", "model", "apiKeyEnv", "baseURL"] as const;
 const ALLOWED_AGENT_NAMES = new Set<string>(AGENT_NAMES);
+
+/**
+ * Parsed `ai-review.json`. Each section is `null` when absent from the file.
+ */
+export interface RepoConfigOverride {
+  readonly routing: UserRoutingConfigOverride | null;
+  readonly model: UserModelConfigOverride | null;
+}
 
 export class RepoConfigError extends Error {
   constructor(message: string) {
@@ -20,10 +34,11 @@ export class RepoConfigError extends Error {
 
 /**
  * Parses and validates raw JSON content of `ai-review.json`.
- * Returns `null` when `raw` is `null` (file absent) or the file has no `routing` section.
+ * Returns `null` when `raw` is `null` (file absent). When the file is present, returns a
+ * `RepoConfigOverride` whose `routing`/`model` sections are `null` if absent from the file.
  * Throws `RepoConfigError` on any validation violation.
  */
-export function parseRepoConfig(raw: string | null): UserRoutingConfigOverride | null {
+export function parseRepoConfig(raw: string | null): RepoConfigOverride | null {
   if (raw === null) return null;
 
   let parsed: unknown;
@@ -50,7 +65,13 @@ export function parseRepoConfig(raw: string | null): UserRoutingConfigOverride |
     );
   }
 
-  const routing = root["routing"];
+  return {
+    routing: parseRoutingSection(root["routing"]),
+    model: parseModelSection(root["model"]),
+  };
+}
+
+function parseRoutingSection(routing: unknown): UserRoutingConfigOverride | null {
   if (routing === undefined) return null;
 
   if (typeof routing !== "object" || routing === null || Array.isArray(routing)) {
@@ -112,6 +133,65 @@ export function parseRepoConfig(raw: string | null): UserRoutingConfigOverride |
   }
 
   return { agentGlobs: result };
+}
+
+function parseModelSection(model: unknown): UserModelConfigOverride | null {
+  if (model === undefined) return null;
+
+  if (typeof model !== "object" || model === null || Array.isArray(model)) {
+    throw new RepoConfigError(`${REPO_CONFIG_FILE_NAME}: "model" must be an object.`);
+  }
+
+  const modelObj = model as Record<string, unknown>;
+  const unknownModelKeys = Object.keys(modelObj).filter(
+    (k) => !(ALLOWED_MODEL_KEYS as readonly string[]).includes(k)
+  );
+  if (unknownModelKeys.length > 0) {
+    throw new RepoConfigError(
+      `${REPO_CONFIG_FILE_NAME}: unknown key(s) in "model": "${unknownModelKeys.join('", "')}". ` +
+        `Allowed: ${ALLOWED_MODEL_KEYS.join(", ")}.`
+    );
+  }
+
+  const override: {
+    provider?: ProviderKind;
+    model?: string;
+    apiKeyEnv?: string;
+    baseURL?: string;
+  } = {};
+
+  if (modelObj["provider"] !== undefined) {
+    const provider = modelObj["provider"];
+    if (typeof provider !== "string" || !(PROVIDER_KINDS as readonly string[]).includes(provider)) {
+      throw new RepoConfigError(
+        `${REPO_CONFIG_FILE_NAME}: "model.provider" must be one of: ${PROVIDER_KINDS.join(", ")}.`
+      );
+    }
+    override.provider = provider as ProviderKind;
+  }
+
+  for (const key of ["model", "apiKeyEnv", "baseURL"] as const) {
+    const value = modelObj[key];
+    if (value === undefined) continue;
+    if (typeof value !== "string" || value.trim().length === 0) {
+      throw new RepoConfigError(
+        `${REPO_CONFIG_FILE_NAME}: "model.${key}" must be a non-empty string.`
+      );
+    }
+    override[key] = value.trim();
+  }
+
+  if (override.baseURL !== undefined) {
+    try {
+      new URL(override.baseURL);
+    } catch {
+      throw new RepoConfigError(
+        `${REPO_CONFIG_FILE_NAME}: "model.baseURL" is not a valid URL: "${override.baseURL}".`
+      );
+    }
+  }
+
+  return override;
 }
 
 /**
