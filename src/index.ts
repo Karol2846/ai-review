@@ -30,6 +30,7 @@ export {
   RepoConfigError,
   parseRepoConfig,
   mergeRoutingConfig,
+  customAgentsToRoutingOverride,
 } from "./repoConfig";
 export { createLanguageModel } from "./llmClient";
 export type {
@@ -44,6 +45,8 @@ export type {
 export type {
   AgentGlobsMap,
   AgentName,
+  CustomAgentDefinition,
+  CustomAgentsMap,
   RoutingRuntimeConfig,
   UserRoutingConfigOverride,
 } from "./routingTypes";

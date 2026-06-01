@@ -488,4 +488,65 @@ describe("runCli runtime flow", () => {
     expect(exitCode).toBe(0);
     expect(deps.resolveLanguageModel).toHaveBeenCalledWith(expect.any(Function), null);
   });
+
+  it("runs every configured agent when --agents is not provided", async () => {
+    const deps = createRuntimeDeps();
+    deps.readRepoConfigFile.mockReturnValue(null);
+
+    const exitCode = await runCli(["--json"], deps.overrides);
+
+    expect(exitCode).toBe(0);
+    const reviewInput = deps.runReviewPipeline.mock.calls[0]?.[0];
+    const routedAgents = reviewInput ? Object.keys(reviewInput.routingConfig.agentGlobs).sort() : [];
+    expect(routedAgents).toEqual(
+      ["architect", "clean-coder", "ddd-reviewer", "performance", "tester"]
+    );
+  });
+
+  it("registers a custom agent from ai-review.json and routes it through the pipeline", async () => {
+    const deps = createRuntimeDeps();
+    deps.readRepoConfigFile.mockReturnValue(
+      JSON.stringify({
+        agents: { security: { globs: ["**/*.ts"], instructionsFile: "agents/security.agent.md" } },
+      })
+    );
+    deps.loadAgentInstructions.mockResolvedValue({
+      instructions: { tester: "Tester", architect: "Architect", security: "Security review" },
+      warnings: [],
+    });
+
+    const exitCode = await runCli(["--agents", "security", "--json"], deps.overrides);
+
+    expect(exitCode).toBe(0);
+    // The explicit instructionsFile path is forwarded to the loader as an override.
+    expect(deps.loadAgentInstructions).toHaveBeenCalledWith(
+      expect.any(String),
+      ["security"],
+      { security: "agents/security.agent.md" }
+    );
+    const reviewInput = deps.runReviewPipeline.mock.calls[0]?.[0];
+    expect(reviewInput?.routingConfig.agentGlobs["security"]).toEqual(["**/*.ts"]);
+  });
+
+  it("fails fast when a selected custom agent has no loadable instruction", async () => {
+    const deps = createRuntimeDeps();
+    deps.readRepoConfigFile.mockReturnValue(
+      JSON.stringify({
+        agents: { security: { globs: ["**/*.ts"], instructionsFile: "agents/missing.agent.md" } },
+      })
+    );
+    // Loader cannot find the custom agent's instruction.
+    deps.loadAgentInstructions.mockResolvedValue({
+      instructions: { tester: "Tester", architect: "Architect" },
+      warnings: ["Failed to load instruction for \"security\"."],
+    });
+
+    const exitCode = await runCli(["--agents", "security", "--json"], deps.overrides);
+
+    expect(exitCode).toBe(1);
+    expect(deps.writeStderr).toHaveBeenCalledWith(
+      expect.stringContaining("could not load instructions for custom agent")
+    );
+    expect(deps.runReviewPipeline).not.toHaveBeenCalled();
+  });
 });

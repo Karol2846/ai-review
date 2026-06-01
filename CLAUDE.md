@@ -41,18 +41,26 @@ Provider is selected by an **interactive setup wizard** in `src/setupWizard.ts`,
 
 ### Routing and configuration
 
-Changed files are matched to agents by glob patterns via `src/router.ts` (`routeFilesToAgents`, uses `micromatch`). Types live in `src/routingTypes.ts` (`RoutingRuntimeConfig`, `AgentGlobsMap`, `AgentName`). Default agent-to-file-glob routing is in `src/defaultConfig.ts`. Per-repo overrides via `ai-review.json` in the repo root are parsed by `src/repoConfig.ts` (`parseRepoConfig` → `RepoConfigOverride { routing, model }`). Unknown keys or agent names cause a hard-fail. Future phases will add `agents`, `severity`, and `exclude` sections.
+Changed files are matched to agents by glob patterns via `src/router.ts` (`routeFilesToAgents`, uses `micromatch`). Types live in `src/routingTypes.ts` (`RoutingRuntimeConfig`, `AgentGlobsMap`, `AgentName`, `CustomAgentsMap`). Default agent-to-file-glob routing is in `src/defaultConfig.ts`. Per-repo overrides via `ai-review.json` in the repo root are parsed by `src/repoConfig.ts` (`parseRepoConfig` → `RepoConfigOverride { routing, model, agents }`). Unknown keys or agent names cause a hard-fail. Future phases will add `severity` and `exclude` sections.
 
-- **`routing.agentGlobs`** — user globs are **appended** to the defaults (extend semantics, with dedup), merged by `mergeRoutingConfig`.
+- **`routing.agentGlobs`** — extends the **built-in** agents' globs only (unknown agent names hard-fail here; define new agents under `agents`). User globs are **appended** to the defaults (extend semantics, with dedup), merged by `mergeRoutingConfig`.
 - **`model`** (phase 2) — a per-repo provider override mirroring `InstallProviderConfig` (`{ provider?, model?, apiKeyEnv?, baseURL? }`, all optional). It is merged **field-by-field** over the install config by `mergeProviderConfig` (`src/installProviderConfig.ts`): absent fields are inherited; `baseURL` is inherited only when the effective provider matches the install provider (switching provider drops an inherited `baseURL`). The merged result is validated as a whole (`baseURL` only valid for `openai-compatible`). Applied in `src/cli.ts` via `resolveLanguageModel(writeStdout, modelOverride)`. Example:
 
   ```json
   { "model": { "provider": "anthropic", "model": "claude-sonnet-4-6", "apiKeyEnv": "ANTHROPIC_API_KEY" } }
   ```
 
+- **`agents`** (phase 3) — per-repo **custom agents** (beyond the 5 built-ins). Each entry is `{ globs, instructionsFile }`: `globs` route changed files to the agent; `instructionsFile` is a **required** repo-relative path to its `.agent.md` instruction file (no default — always explicit). The name must match `^[a-z0-9][a-z0-9-]*$` and must not collide with a built-in agent. Custom globs are folded into the routing config via `customAgentsToRoutingOverride` + `mergeRoutingConfig`; `loadAgentInstructionsFromDisk` loads a custom agent's instruction from its `instructionsFile` (skipping the directory search). A selected custom agent whose instruction cannot be loaded is a **fail-fast** config error (exit 1). Example:
+
+  ```json
+  { "agents": { "security": { "globs": ["**/*.java"], "instructionsFile": "agents/security.agent.md" } } }
+  ```
+
+When `--agents` is **not** passed, the run includes **every configured agent** (built-in + custom); `--agents <list>` narrows the selection.
+
 ### Agent instructions
 
-Agent prompts (`agents/*.agent.md`) are loaded from the first matching path among: `<repo>/agents/`, `<dist>/../agents/`, `~/.copilot/agents/`. YAML front matter is stripped before the instruction is sent. Five agents: `clean-coder`, `tester`, `architect`, `ddd-reviewer`, `performance`.
+Agent prompts (`agents/*.agent.md`) are loaded from the first matching path among: `<repo>/agents/`, `<dist>/../agents/`, `~/.copilot/agents/`. YAML front matter is stripped before the instruction is sent. Five built-in agents: `clean-coder`, `tester`, `architect`, `ddd-reviewer`, `performance`. Repos can add custom agents via the `agents` section of `ai-review.json` (see Routing and configuration), whose instructions load from an explicit `instructionsFile` path rather than the directory search.
 
 ### Finding contract
 
