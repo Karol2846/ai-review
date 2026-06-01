@@ -1,7 +1,6 @@
 import { parseArgs } from "node:util";
 
 import { isFindingSeverity, type FindingSeverity } from "./aggregator";
-import { AGENT_NAMES } from "./routingTypes";
 
 const DEFAULT_MAX_PARALLEL = 5;
 const DEFAULT_SEVERITY: FindingSeverity = "info";
@@ -14,8 +13,8 @@ export interface CliOptions {
   readonly debug: boolean;
   readonly showHelp: boolean;
   readonly baseBranch?: string;
-  readonly agents: readonly string[];
-  readonly agentsCsv: string;
+  /** Agents requested via `--agents`. Omitted when the flag is absent (run all configured agents). */
+  readonly agents?: readonly string[];
   readonly minSeverity: FindingSeverity;
   readonly fileFilter?: string;
   readonly maxParallel: number;
@@ -161,9 +160,7 @@ export function parseCliArgs(argv: readonly string[]): CliOptions {
 
   const baseBranch = parseOptionalNonEmpty(readOptionalStringValue(parsedValues.base, "--base"), "--base");
   const agentsValue = readOptionalStringValue(parsedValues.agents, "--agents");
-  const agents = agentsValue
-    ? parseCsvList(agentsValue, "--agents")
-    : [...AGENT_NAMES];
+  const agents = agentsValue ? parseCsvList(agentsValue, "--agents") : undefined;
   const minSeverity = parseSeverity(readOptionalStringValue(parsedValues.severity, "--severity"));
   const fileFilter = parseOptionalNonEmpty(
     readOptionalStringValue(parsedValues.files, "--files"),
@@ -182,8 +179,7 @@ export function parseCliArgs(argv: readonly string[]): CliOptions {
     debug: readBooleanFlag(parsedValues.debug),
     showHelp: readBooleanFlag(parsedValues.help),
     ...(baseBranch !== undefined ? { baseBranch } : {}),
-    agents,
-    agentsCsv: agents.join(","),
+    ...(agents !== undefined ? { agents } : {}),
     minSeverity,
     ...(fileFilter !== undefined ? { fileFilter } : {}),
     maxParallel,

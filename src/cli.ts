@@ -29,11 +29,11 @@ import {
   type UserModelConfigOverride,
 } from "./installProviderConfig";
 import {createLanguageModel} from "./llmClient";
-import {parseRepoConfig, mergeRoutingConfig, RepoConfigError, REPO_CONFIG_FILE_NAME} from "./repoConfig";
+import {parseRepoConfig, mergeRoutingConfig, customAgentsToRoutingOverride, RepoConfigError, REPO_CONFIG_FILE_NAME} from "./repoConfig";
 import {renderReport} from "./reporter";
 import {runReviewPipeline, type RunReviewPipelineInput, type RunReviewPipelineResult} from "./reviewPipeline";
 import type {AgentInstructionsByAgent, RunnerRetryConfig} from "./runner";
-import type {RoutingRuntimeConfig} from "./routingTypes";
+import type {CustomAgentsMap, RoutingRuntimeConfig} from "./routingTypes";
 
 const DEFAULT_MAX_CHAR_LIMIT = 14_000;
 const DEFAULT_RETRY: RunnerRetryConfig = {
@@ -56,7 +56,8 @@ export interface CliRuntimeDependencies {
   readonly getChangedFiles: (mergeBase: string) => Promise<string[]>;
   readonly loadAgentInstructions: (
     repoRootPath: string,
-    agentNames: readonly string[]
+    agentNames: readonly string[],
+    instructionFileOverrides?: Readonly<Record<string, string>>
   ) => Promise<LoadAgentInstructionsResult>;
   readonly resolveLanguageModel: (
     writeStdout: (m: string) => void,
@@ -153,7 +154,8 @@ function stripYamlFrontMatter(content: string): string {
 
 async function loadAgentInstructionsFromDisk(
   repoRootPath: string,
-  agentNames: readonly string[]
+  agentNames: readonly string[],
+  instructionFileOverrides: Readonly<Record<string, string>> = {}
 ): Promise<LoadAgentInstructionsResult> {
   const { readFile } = await import("node:fs/promises");
   const candidateDirectories = [
@@ -166,11 +168,18 @@ async function loadAgentInstructionsFromDisk(
   const warnings: string[] = [];
 
   for (const agentName of [...new Set(agentNames)]) {
+    // Custom agents declare an explicit instructionsFile; load only from that path (no directory search).
+    const override = Object.hasOwn(instructionFileOverrides, agentName)
+      ? instructionFileOverrides[agentName]
+      : undefined;
+    const candidatePaths = override
+      ? [join(repoRootPath, override)]
+      : uniqueDirectories.map((directoryPath) => join(directoryPath, `${agentName}.agent.md`));
+
     let loaded = false;
     const attemptedPaths: string[] = [];
 
-    for (const directoryPath of uniqueDirectories) {
-      const instructionPath = join(directoryPath, `${agentName}.agent.md`);
+    for (const instructionPath of candidatePaths) {
       attemptedPaths.push(instructionPath);
 
       try {
@@ -383,16 +392,22 @@ export async function runCli(
 
     let routingConfig: RoutingRuntimeConfig;
     let modelOverride: UserModelConfigOverride | null = null;
+    let customAgents: CustomAgentsMap | null = null;
     try {
       const repoConfigRaw = deps.readRepoConfigFile(repoRootPath);
       const repoConfigOverride = parseRepoConfig(repoConfigRaw);
       routingConfig = mergeRoutingConfig(defaultRoutingConfig, repoConfigOverride?.routing ?? null);
+      customAgents = repoConfigOverride?.agents ?? null;
+      // Fold custom agents' globs into the routing config so the pipeline routes files to them.
+      routingConfig = mergeRoutingConfig(routingConfig, customAgentsToRoutingOverride(customAgents));
       modelOverride = repoConfigOverride?.model ?? null;
       if (options.debug && repoConfigOverride !== null) {
         const extendedAgents = Object.keys(repoConfigOverride.routing?.agentGlobs ?? {});
         const modelKeys = modelOverride ? Object.keys(modelOverride) : [];
+        const customAgentNames = customAgents ? Object.keys(customAgents) : [];
         deps.writeStderr(
           `DEBUG: loaded ${REPO_CONFIG_FILE_NAME} — extended routing for: ${extendedAgents.join(", ") || "none"}` +
+            (customAgentNames.length > 0 ? `; custom agents: ${customAgentNames.join(", ")}` : "") +
             (modelKeys.length > 0 ? `; model override: ${modelKeys.join(", ")}` : "")
         );
       }
@@ -404,9 +419,11 @@ export async function runCli(
       throw err;
     }
 
+    // No `--agents` flag → run every configured agent (built-in + custom).
+    const requestedAgents = options.agents ?? Object.keys(routingConfig.agentGlobs);
     const filteredRoutingConfig = filterRoutingConfigByAgents(
       routingConfig,
-      options.agents
+      requestedAgents
     );
     for (const unknownAgent of filteredRoutingConfig.unknownAgents) {
       debugWarnings.push(`Requested agent "${unknownAgent}" is not present in routing config and was ignored.`);
@@ -422,11 +439,38 @@ export async function runCli(
       return 0;
     }
 
+    const instructionFileOverrides: Record<string, string> = {};
+    if (customAgents !== null) {
+      for (const [name, definition] of Object.entries(customAgents)) {
+        instructionFileOverrides[name] = definition.instructionsFile;
+      }
+    }
+
     const instructionsResult = await deps.loadAgentInstructions(
       repoRootPath,
-      filteredRoutingConfig.selectedAgents
+      filteredRoutingConfig.selectedAgents,
+      instructionFileOverrides
     );
     debugWarnings.push(...instructionsResult.warnings);
+
+    // Fail-fast: a selected custom agent without a loadable instruction is a configuration error.
+    if (customAgents !== null) {
+      const instructions = instructionsResult.instructions;
+      const hasInstruction = (agent: string): boolean =>
+        instructions instanceof Map ? instructions.has(agent) : Object.hasOwn(instructions, agent);
+      const missingCustomAgents = filteredRoutingConfig.selectedAgents.filter(
+        (agent) => Object.hasOwn(customAgents as CustomAgentsMap, agent) && !hasInstruction(agent)
+      );
+      if (missingCustomAgents.length > 0) {
+        const details = missingCustomAgents
+          .map((agent) => `"${agent}" (${(customAgents as CustomAgentsMap)[agent]?.instructionsFile})`)
+          .join(", ");
+        deps.writeStderr(
+          `Error: ${REPO_CONFIG_FILE_NAME}: could not load instructions for custom agent(s): ${details}.`
+        );
+        return 1;
+      }
+    }
 
     const modelOrSetup = await deps.resolveLanguageModel(deps.writeStdout, modelOverride);
     if (modelOrSetup === SETUP_COMPLETED) {

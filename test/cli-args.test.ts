@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import { AGENT_NAMES } from "../src/routingTypes";
 import { CliArgsError, formatCliUsage, parseCliArgs } from "../src/cliArgs";
 
 function expectCliArgsError(argv: readonly string[], expectedMessage: RegExp): void {
@@ -9,7 +8,7 @@ function expectCliArgsError(argv: readonly string[], expectedMessage: RegExp): v
 }
 
 describe("parseCliArgs", () => {
-  it("returns defaults when no args are passed", () => {
+  it("returns defaults when no args are passed (agents omitted → run all configured)", () => {
     const result = parseCliArgs([]);
 
     expect(result).toEqual({
@@ -19,11 +18,10 @@ describe("parseCliArgs", () => {
       json: false,
       debug: false,
       showHelp: false,
-      agents: [...AGENT_NAMES],
-      agentsCsv: AGENT_NAMES.join(","),
       minSeverity: "info",
       maxParallel: 5,
     });
+    expect(result.agents).toBeUndefined();
   });
 
   it("parses all supported flags and values", () => {
@@ -54,7 +52,6 @@ describe("parseCliArgs", () => {
       showHelp: true,
       baseBranch: "develop",
       agents: ["tester", "architect"],
-      agentsCsv: "tester,architect",
       minSeverity: "warning",
       fileFilter: "src/**/*.ts",
       maxParallel: 3,
