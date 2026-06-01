@@ -6,8 +6,10 @@ import {
   INSTALL_PROVIDER_CONFIG_FILE_NAME,
   PROVIDER_KINDS,
   InstallProviderConfigParseError,
+  type InstallProviderConfig,
   getInstallProviderConfigPath,
   loadInstallProviderConfig,
+  mergeProviderConfig,
 } from "../src/installProviderConfig";
 
 const validConfig = {
@@ -135,5 +137,76 @@ describe("loadInstallProviderConfig", () => {
     try { loadInstallProviderConfig("/nonexistent/path/.ai-review-install-provider.json"); } catch (e) {
       expect((e as InstallProviderConfigParseError).code).toBe("INVALID_CONFIG_SHAPE");
     }
+  });
+});
+
+describe("mergeProviderConfig", () => {
+  const installOpenAI: InstallProviderConfig = {
+    provider: "openai-compatible",
+    model: "gpt-4o",
+    apiKeyEnv: "OPENAI_API_KEY",
+  };
+  const installGroq: InstallProviderConfig = {
+    provider: "openai-compatible",
+    model: "gpt-4o",
+    apiKeyEnv: "OPENAI_API_KEY",
+    baseURL: "https://api.groq.com/openai/v1",
+  };
+
+  it("returns the base config unchanged when override is null", () => {
+    expect(mergeProviderConfig(installOpenAI, null)).toBe(installOpenAI);
+  });
+
+  it("overrides only the model name, inheriting the rest", () => {
+    const result = mergeProviderConfig(installOpenAI, { model: "gpt-4o-mini" });
+    expect(result).toEqual({
+      provider: "openai-compatible",
+      model: "gpt-4o-mini",
+      apiKeyEnv: "OPENAI_API_KEY",
+    });
+  });
+
+  it("overrides provider and apiKeyEnv together", () => {
+    const result = mergeProviderConfig(installOpenAI, {
+      provider: "anthropic",
+      model: "claude-sonnet-4-6",
+      apiKeyEnv: "ANTHROPIC_API_KEY",
+    });
+    expect(result).toEqual({
+      provider: "anthropic",
+      model: "claude-sonnet-4-6",
+      apiKeyEnv: "ANTHROPIC_API_KEY",
+    });
+  });
+
+  it("inherits baseURL when the provider is unchanged", () => {
+    const result = mergeProviderConfig(installGroq, { model: "llama-3.3-70b-versatile" });
+    expect(result.baseURL).toBe("https://api.groq.com/openai/v1");
+  });
+
+  it("drops an inherited baseURL when the provider changes", () => {
+    const result = mergeProviderConfig(installGroq, {
+      provider: "anthropic",
+      apiKeyEnv: "ANTHROPIC_API_KEY",
+    });
+    expect(result.baseURL).toBeUndefined();
+    expect(result.provider).toBe("anthropic");
+  });
+
+  it("lets the override set its own baseURL", () => {
+    const result = mergeProviderConfig(installOpenAI, {
+      baseURL: "https://openrouter.ai/api/v1",
+    });
+    expect(result.baseURL).toBe("https://openrouter.ai/api/v1");
+  });
+
+  it("throws when the merged result pairs baseURL with a non-openai-compatible provider", () => {
+    expect(() =>
+      mergeProviderConfig(installOpenAI, {
+        provider: "anthropic",
+        apiKeyEnv: "ANTHROPIC_API_KEY",
+        baseURL: "https://example.com",
+      })
+    ).toThrow(InstallProviderConfigParseError);
   });
 });

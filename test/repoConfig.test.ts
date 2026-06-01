@@ -12,13 +12,13 @@ describe("parseRepoConfig", () => {
     expect(parseRepoConfig(null)).toBeNull();
   });
 
-  it("returns null when file has no routing section", () => {
-    expect(parseRepoConfig("{}")).toBeNull();
+  it("returns null sections when file is an empty object", () => {
+    expect(parseRepoConfig("{}")).toEqual({ routing: null, model: null });
   });
 
-  it("returns empty override when routing section has no agentGlobs", () => {
+  it("returns empty routing override when routing section has no agentGlobs", () => {
     const result = parseRepoConfig(JSON.stringify({ routing: {} }));
-    expect(result).toEqual({});
+    expect(result).toEqual({ routing: {}, model: null });
   });
 
   it("parses valid agentGlobs for a known agent", () => {
@@ -31,9 +31,12 @@ describe("parseRepoConfig", () => {
     });
     const result = parseRepoConfig(raw);
     expect(result).toEqual({
-      agentGlobs: {
-        "ddd-reviewer": ["**/internal/core/**/*.java"],
+      routing: {
+        agentGlobs: {
+          "ddd-reviewer": ["**/internal/core/**/*.java"],
+        },
       },
+      model: null,
     });
   });
 
@@ -47,8 +50,8 @@ describe("parseRepoConfig", () => {
       },
     });
     const result = parseRepoConfig(raw);
-    expect(result?.agentGlobs?.["ddd-reviewer"]).toEqual(["**/internal/core/**/*.java"]);
-    expect(result?.agentGlobs?.["performance"]).toEqual(["**/infra/cache/**/*.java"]);
+    expect(result?.routing?.agentGlobs?.["ddd-reviewer"]).toEqual(["**/internal/core/**/*.java"]);
+    expect(result?.routing?.agentGlobs?.["performance"]).toEqual(["**/infra/cache/**/*.java"]);
   });
 
   it("throws RepoConfigError on invalid JSON", () => {
@@ -60,10 +63,10 @@ describe("parseRepoConfig", () => {
   });
 
   it("throws RepoConfigError on unknown root key", () => {
-    const raw = JSON.stringify({ model: "gpt-4o", routing: {} });
+    const raw = JSON.stringify({ severity: "high", routing: {} });
     expect(() => parseRepoConfig(raw)).toThrow(RepoConfigError);
     expect(() => parseRepoConfig(raw)).toThrow(/unknown key/i);
-    expect(() => parseRepoConfig(raw)).toThrow(/model/);
+    expect(() => parseRepoConfig(raw)).toThrow(/severity/);
   });
 
   it("throws RepoConfigError with list of allowed root keys on unknown root key", () => {
@@ -126,6 +129,77 @@ describe("parseRepoConfig", () => {
 
   it("throws RepoConfigError when root is not an object (array)", () => {
     expect(() => parseRepoConfig("[]")).toThrow(RepoConfigError);
+  });
+});
+
+describe("parseRepoConfig — model section", () => {
+  it("returns null model when section is absent", () => {
+    const result = parseRepoConfig(JSON.stringify({ routing: {} }));
+    expect(result?.model).toBeNull();
+  });
+
+  it("parses a full provider override", () => {
+    const raw = JSON.stringify({
+      model: {
+        provider: "anthropic",
+        model: "claude-sonnet-4-6",
+        apiKeyEnv: "ANTHROPIC_API_KEY",
+      },
+    });
+    const result = parseRepoConfig(raw);
+    expect(result?.model).toEqual({
+      provider: "anthropic",
+      model: "claude-sonnet-4-6",
+      apiKeyEnv: "ANTHROPIC_API_KEY",
+    });
+  });
+
+  it("parses a model-name-only override", () => {
+    const result = parseRepoConfig(JSON.stringify({ model: { model: "gpt-4o" } }));
+    expect(result?.model).toEqual({ model: "gpt-4o" });
+  });
+
+  it("trims string fields", () => {
+    const result = parseRepoConfig(JSON.stringify({ model: { model: "  gpt-4o  " } }));
+    expect(result?.model?.model).toBe("gpt-4o");
+  });
+
+  it("parses baseURL together with openai-compatible provider", () => {
+    const raw = JSON.stringify({
+      model: { provider: "openai-compatible", baseURL: "https://api.groq.com/openai/v1" },
+    });
+    const result = parseRepoConfig(raw);
+    expect(result?.model?.baseURL).toBe("https://api.groq.com/openai/v1");
+  });
+
+  it("throws on unknown key in model section", () => {
+    const raw = JSON.stringify({ model: { temperature: 0.2 } });
+    expect(() => parseRepoConfig(raw)).toThrow(RepoConfigError);
+    expect(() => parseRepoConfig(raw)).toThrow(/temperature/);
+  });
+
+  it("throws when model section is not an object", () => {
+    expect(() => parseRepoConfig(JSON.stringify({ model: "gpt-4o" }))).toThrow(
+      /"model" must be an object/
+    );
+  });
+
+  it("throws on invalid provider kind", () => {
+    const raw = JSON.stringify({ model: { provider: "ollama" } });
+    expect(() => parseRepoConfig(raw)).toThrow(RepoConfigError);
+    expect(() => parseRepoConfig(raw)).toThrow(/provider/);
+  });
+
+  it("throws on empty model name", () => {
+    expect(() => parseRepoConfig(JSON.stringify({ model: { model: "   " } }))).toThrow(
+      /non-empty string/i
+    );
+  });
+
+  it("throws on invalid baseURL", () => {
+    expect(() => parseRepoConfig(JSON.stringify({ model: { baseURL: "not-a-url" } }))).toThrow(
+      /valid URL/i
+    );
   });
 });
 

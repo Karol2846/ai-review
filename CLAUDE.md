@@ -41,7 +41,14 @@ Provider is selected by an **interactive setup wizard** in `src/setupWizard.ts`,
 
 ### Routing and configuration
 
-Changed files are matched to agents by glob patterns via `src/router.ts` (`routeFilesToAgents`, uses `micromatch`). Types live in `src/routingTypes.ts` (`RoutingRuntimeConfig`, `AgentGlobsMap`, `AgentName`). Default agent-to-file-glob routing is in `src/defaultConfig.ts`. Per-repo routing overrides via `ai-review.json` in the repo root are loaded and merged by `src/repoConfig.ts` (`parseRepoConfig`, `mergeRoutingConfig`). Phase 1 supports only `routing.agentGlobs` — user globs are **appended** to the defaults (extend semantics, with dedup). Unknown keys or agent names cause a hard-fail. Future phases will add `model`, `agents`, `severity`, and `exclude` sections.
+Changed files are matched to agents by glob patterns via `src/router.ts` (`routeFilesToAgents`, uses `micromatch`). Types live in `src/routingTypes.ts` (`RoutingRuntimeConfig`, `AgentGlobsMap`, `AgentName`). Default agent-to-file-glob routing is in `src/defaultConfig.ts`. Per-repo overrides via `ai-review.json` in the repo root are parsed by `src/repoConfig.ts` (`parseRepoConfig` → `RepoConfigOverride { routing, model }`). Unknown keys or agent names cause a hard-fail. Future phases will add `agents`, `severity`, and `exclude` sections.
+
+- **`routing.agentGlobs`** — user globs are **appended** to the defaults (extend semantics, with dedup), merged by `mergeRoutingConfig`.
+- **`model`** (phase 2) — a per-repo provider override mirroring `InstallProviderConfig` (`{ provider?, model?, apiKeyEnv?, baseURL? }`, all optional). It is merged **field-by-field** over the install config by `mergeProviderConfig` (`src/installProviderConfig.ts`): absent fields are inherited; `baseURL` is inherited only when the effective provider matches the install provider (switching provider drops an inherited `baseURL`). The merged result is validated as a whole (`baseURL` only valid for `openai-compatible`). Applied in `src/cli.ts` via `resolveLanguageModel(writeStdout, modelOverride)`. Example:
+
+  ```json
+  { "model": { "provider": "anthropic", "model": "claude-sonnet-4-6", "apiKeyEnv": "ANTHROPIC_API_KEY" } }
+  ```
 
 ### Agent instructions
 

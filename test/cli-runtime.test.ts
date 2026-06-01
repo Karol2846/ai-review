@@ -464,4 +464,28 @@ describe("runCli runtime flow", () => {
     expect(exitCode).toBe(0);
     expect(deps.runReviewPipeline).not.toHaveBeenCalled();
   });
+
+  it("passes the ai-review.json model override to resolveLanguageModel", async () => {
+    const deps = createRuntimeDeps();
+    deps.readRepoConfigFile.mockReturnValue(
+      JSON.stringify({ model: { model: "gpt-4o-mini" } })
+    );
+
+    const exitCode = await runCli(["--json"], deps.overrides);
+
+    expect(exitCode).toBe(0);
+    expect(deps.resolveLanguageModel).toHaveBeenCalledWith(expect.any(Function), {
+      model: "gpt-4o-mini",
+    });
+  });
+
+  it("passes a null model override when ai-review.json has no model section", async () => {
+    const deps = createRuntimeDeps();
+    deps.readRepoConfigFile.mockReturnValue(null);
+
+    const exitCode = await runCli(["--json"], deps.overrides);
+
+    expect(exitCode).toBe(0);
+    expect(deps.resolveLanguageModel).toHaveBeenCalledWith(expect.any(Function), null);
+  });
 });

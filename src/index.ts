@@ -23,6 +23,7 @@ export {
   InstallProviderConfigParseError,
   getInstallProviderConfigPath,
   loadInstallProviderConfig,
+  mergeProviderConfig,
 } from "./installProviderConfig";
 export {
   REPO_CONFIG_FILE_NAME,
@@ -71,7 +72,9 @@ export type {
   InstallProviderConfig,
   InstallProviderConfigParseErrorCode,
   ProviderKind,
+  UserModelConfigOverride,
 } from "./installProviderConfig";
+export type { RepoConfigOverride } from "./repoConfig";
 export type { LlmClientConfig } from "./llmClient";
 export type { Finding } from "./findingSchema";
 export type {
