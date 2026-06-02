@@ -9,7 +9,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | Build                    | `npm run build`                                                                         |
 | Type-check only          | `npm run typecheck`                                                                     |
 | Run all tests            | `npm run test`                                                                          |
-| Single-scope test run    | `ai-review --agents "tester" --files "src/main/java/com/example/MyClass.java" --report` |
+| Single-scope test run    | `ai-review --agents "tester" --report`                                                  |
+| Exclude files from review | `ai-review --exclude "**/*.generated.ts,vendor/**"`                                    |
 | Install globally         | `npm run build && npm install -g .`                                                     |
 | Run with terminal report | `ai-review --report`                                                                    |
 | Raw JSON output          | `ai-review --json`                                                                      |
@@ -41,7 +42,7 @@ Provider is selected by an **interactive setup wizard** in `src/setupWizard.ts`,
 
 ### Routing and configuration
 
-Changed files are matched to agents by glob patterns via `src/router.ts` (`routeFilesToAgents`, uses `micromatch`). Types live in `src/routingTypes.ts` (`RoutingRuntimeConfig`, `AgentGlobsMap`, `AgentName`, `CustomAgentsMap`). Default agent-to-file-glob routing is in `src/defaultConfig.ts`. Per-repo overrides via `ai-review.json` in the repo root are parsed by `src/repoConfig.ts` (`parseRepoConfig` → `RepoConfigOverride { routing, model, agents }`). Unknown keys or agent names cause a hard-fail. Future phases will add `severity` and `exclude` sections.
+Changed files are matched to agents by glob patterns via `src/router.ts` (`routeFilesToAgents`, uses `micromatch`). Types live in `src/routingTypes.ts` (`RoutingRuntimeConfig`, `AgentGlobsMap`, `AgentName`, `CustomAgentsMap`). Default agent-to-file-glob routing is in `src/defaultConfig.ts`. Per-repo overrides via `ai-review.json` in the repo root are parsed by `src/repoConfig.ts` (`parseRepoConfig` → `RepoConfigOverride { routing, model, agents, exclude }`). Unknown keys or agent names cause a hard-fail. A future phase may add a `severity` section.
 
 - **`routing.agentGlobs`** — extends the **built-in** agents' globs only (unknown agent names hard-fail here; define new agents under `agents`). User globs are **appended** to the defaults (extend semantics, with dedup), merged by `mergeRoutingConfig`.
 - **`model`** (phase 2) — a per-repo provider override mirroring `InstallProviderConfig` (`{ provider?, model?, apiKeyEnv?, baseURL? }`, all optional). It is merged **field-by-field** over the install config by `mergeProviderConfig` (`src/installProviderConfig.ts`): absent fields are inherited; `baseURL` is inherited only when the effective provider matches the install provider (switching provider drops an inherited `baseURL`). The merged result is validated as a whole (`baseURL` only valid for `openai-compatible`). Applied in `src/cli.ts` via `resolveLanguageModel(writeStdout, modelOverride)`. Example:
@@ -54,6 +55,12 @@ Changed files are matched to agents by glob patterns via `src/router.ts` (`route
 
   ```json
   { "agents": { "security": { "globs": ["**/*.java"], "instructionsFile": "agents/security.agent.md" } } }
+  ```
+
+- **`exclude`** (phase 4) — a flat array of glob patterns whose matching files are dropped **before routing**, so no agent (built-in or custom) reviews them. Parsed by `parseExcludeSection` (reuses `validateGlobsArray`, so an empty array hard-fails). Applied in `src/cli.ts` by `excludeChangedFiles` (uses `micromatch.isMatch` + `normalizeGlobPath`). The CLI flag `--exclude <list>` (comma-separated globs, parsed by `parseCsvList`) adds to this: the effective exclusion set is the **union** of `ai-review.json`'s `exclude` and `--exclude`, deduplicated. Example:
+
+  ```json
+  { "exclude": ["**/*.generated.ts", "vendor/**"] }
   ```
 
 When `--agents` is **not** passed, the run includes **every configured agent** (built-in + custom); `--agents <list>` narrows the selection.

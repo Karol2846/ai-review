@@ -265,7 +265,7 @@ describe("runCli runtime flow", () => {
     rmSync(repoWithoutAgents, { recursive: true, force: true });
   });
 
-  it("applies --base, --files, --agents, --severity, --parallel and passes model to pipeline", async () => {
+  it("applies --base, --exclude, --agents, --severity, --parallel and passes model to pipeline", async () => {
     const deps = createRuntimeDeps();
     deps.getChangedFiles.mockResolvedValue(["src/service.ts", "README.md", "scripts/setup.sh"]);
 
@@ -287,8 +287,8 @@ describe("runCli runtime flow", () => {
         "--json",
         "--base",
         "develop",
-        "--files",
-        "src/**/*.ts",
+        "--exclude",
+        "README.md,scripts/**",
         "--agents",
         "tester,architect",
         "--severity",
@@ -358,15 +358,49 @@ describe("runCli runtime flow", () => {
     expect(deps.runReviewPipeline).not.toHaveBeenCalled();
   });
 
-  it("returns empty JSON when no files remain after --files filter", async () => {
+  it("returns empty JSON when all files are excluded via --exclude", async () => {
     const deps = createRuntimeDeps();
     deps.getChangedFiles.mockResolvedValue(["README.md"]);
 
-    const exitCode = await runCli(["--json", "--files", "src/**/*.ts"], deps.overrides);
+    const exitCode = await runCli(["--json", "--exclude", "**/*.md"], deps.overrides);
 
     expect(exitCode).toBe(0);
     expect(deps.runReviewPipeline).not.toHaveBeenCalled();
     expect(deps.writeStdout).toHaveBeenCalledWith("[]");
+  });
+
+  it("excludes files matching the ai-review.json exclude section", async () => {
+    const deps = createRuntimeDeps();
+    deps.getChangedFiles.mockResolvedValue(["src/service.ts", "src/types.generated.ts"]);
+    deps.readRepoConfigFile.mockReturnValue(JSON.stringify({ exclude: ["**/*.generated.ts"] }));
+
+    const exitCode = await runCli(["--json"], deps.overrides);
+
+    expect(exitCode).toBe(0);
+    expect(deps.runReviewPipeline).toHaveBeenCalledWith(
+      expect.objectContaining({ changedFiles: ["src/service.ts"] })
+    );
+  });
+
+  it("unions config exclude with --exclude globs (dedup)", async () => {
+    const deps = createRuntimeDeps();
+    deps.getChangedFiles.mockResolvedValue([
+      "src/service.ts",
+      "src/types.generated.ts",
+      "vendor/lib.ts",
+    ]);
+    deps.readRepoConfigFile.mockReturnValue(JSON.stringify({ exclude: ["**/*.generated.ts"] }));
+
+    // CLI repeats the config glob (dedup) and adds a new one.
+    const exitCode = await runCli(
+      ["--json", "--exclude", "**/*.generated.ts,vendor/**"],
+      deps.overrides
+    );
+
+    expect(exitCode).toBe(0);
+    expect(deps.runReviewPipeline).toHaveBeenCalledWith(
+      expect.objectContaining({ changedFiles: ["src/service.ts"] })
+    );
   });
 
   it("prints report, annotates findings, and emits debug warnings", async () => {

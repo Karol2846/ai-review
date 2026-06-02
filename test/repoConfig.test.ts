@@ -14,12 +14,12 @@ describe("parseRepoConfig", () => {
   });
 
   it("returns null sections when file is an empty object", () => {
-    expect(parseRepoConfig("{}")).toEqual({ routing: null, model: null, agents: null });
+    expect(parseRepoConfig("{}")).toEqual({ routing: null, model: null, agents: null, exclude: null });
   });
 
   it("returns empty routing override when routing section has no agentGlobs", () => {
     const result = parseRepoConfig(JSON.stringify({ routing: {} }));
-    expect(result).toEqual({ routing: {}, model: null, agents: null });
+    expect(result).toEqual({ routing: {}, model: null, agents: null, exclude: null });
   });
 
   it("parses valid agentGlobs for a known agent", () => {
@@ -39,6 +39,7 @@ describe("parseRepoConfig", () => {
       },
       model: null,
       agents: null,
+      exclude: null,
     });
   });
 
@@ -285,6 +286,42 @@ describe("parseRepoConfig — agents section", () => {
 
   it("throws when the agents section is not an object", () => {
     expect(() => parseRepoConfig(JSON.stringify({ agents: [] }))).toThrow(/"agents" must be an object/);
+  });
+});
+
+describe("parseRepoConfig — exclude section", () => {
+  it("returns null exclude when section is absent", () => {
+    const result = parseRepoConfig(JSON.stringify({ routing: {} }));
+    expect(result?.exclude).toBeNull();
+  });
+
+  it("parses a valid array of exclude globs", () => {
+    const raw = JSON.stringify({ exclude: ["**/*.generated.ts", "vendor/**"] });
+    const result = parseRepoConfig(raw);
+    expect(result?.exclude).toEqual(["**/*.generated.ts", "vendor/**"]);
+  });
+
+  it("throws RepoConfigError on an empty exclude array", () => {
+    const raw = JSON.stringify({ exclude: [] });
+    expect(() => parseRepoConfig(raw)).toThrow(RepoConfigError);
+    expect(() => parseRepoConfig(raw)).toThrow(/must not be empty/i);
+  });
+
+  it("throws RepoConfigError when a glob entry is not a string", () => {
+    const raw = JSON.stringify({ exclude: ["ok", 42] });
+    expect(() => parseRepoConfig(raw)).toThrow(RepoConfigError);
+    expect(() => parseRepoConfig(raw)).toThrow(/non-empty string/i);
+  });
+
+  it("throws RepoConfigError on a whitespace-only glob", () => {
+    const raw = JSON.stringify({ exclude: ["  "] });
+    expect(() => parseRepoConfig(raw)).toThrow(RepoConfigError);
+  });
+
+  it("throws RepoConfigError when exclude is not an array", () => {
+    const raw = JSON.stringify({ exclude: "**/*.ts" });
+    expect(() => parseRepoConfig(raw)).toThrow(RepoConfigError);
+    expect(() => parseRepoConfig(raw)).toThrow(/array/i);
   });
 });
 

@@ -16,7 +16,8 @@ export interface CliOptions {
   /** Agents requested via `--agents`. Omitted when the flag is absent (run all configured agents). */
   readonly agents?: readonly string[];
   readonly minSeverity: FindingSeverity;
-  readonly fileFilter?: string;
+  /** Glob patterns from `--exclude` used to drop changed files before routing. Omitted when absent. */
+  readonly exclude?: readonly string[];
   readonly maxParallel: number;
 }
 
@@ -94,7 +95,7 @@ export function formatCliUsage(): string {
     "  --clean            Remove previous [ai-review] TODO comments",
     "  --agents <list>    Comma-separated agent list (default: all)",
     "  --severity <min>   Minimum severity: critical, warning, info (default: info)",
-    "  --files <glob>     Filter changed files by glob pattern",
+    "  --exclude <list>   Comma-separated glob patterns to exclude from review",
     "  --json             Output raw JSON findings",
     "  --debug            Show raw agent output and timings for debugging",
     "  --parallel <n>     Max parallel agent invocations (default: 5)",
@@ -144,7 +145,7 @@ export function parseCliArgs(argv: readonly string[]): CliOptions {
         base: { type: "string" },
         agents: { type: "string" },
         severity: { type: "string" },
-        files: { type: "string" },
+        exclude: { type: "string" },
         parallel: { type: "string" },
         help: { type: "boolean", short: "h" },
       },
@@ -162,10 +163,8 @@ export function parseCliArgs(argv: readonly string[]): CliOptions {
   const agentsValue = readOptionalStringValue(parsedValues.agents, "--agents");
   const agents = agentsValue ? parseCsvList(agentsValue, "--agents") : undefined;
   const minSeverity = parseSeverity(readOptionalStringValue(parsedValues.severity, "--severity"));
-  const fileFilter = parseOptionalNonEmpty(
-    readOptionalStringValue(parsedValues.files, "--files"),
-    "--files"
-  );
+  const excludeValue = readOptionalStringValue(parsedValues.exclude, "--exclude");
+  const exclude = excludeValue ? parseCsvList(excludeValue, "--exclude") : undefined;
   const parallelValue = readOptionalStringValue(parsedValues.parallel, "--parallel");
   const maxParallel = parallelValue
     ? parsePositiveInteger(parallelValue, "--parallel")
@@ -181,7 +180,7 @@ export function parseCliArgs(argv: readonly string[]): CliOptions {
     ...(baseBranch !== undefined ? { baseBranch } : {}),
     ...(agents !== undefined ? { agents } : {}),
     minSeverity,
-    ...(fileFilter !== undefined ? { fileFilter } : {}),
+    ...(exclude !== undefined ? { exclude } : {}),
     maxParallel,
   };
 }

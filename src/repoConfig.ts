@@ -14,7 +14,7 @@ import {
 
 export const REPO_CONFIG_FILE_NAME = "ai-review.json";
 
-const ALLOWED_ROOT_KEYS = ["routing", "model", "agents"] as const;
+const ALLOWED_ROOT_KEYS = ["routing", "model", "agents", "exclude"] as const;
 const ALLOWED_ROUTING_KEYS = ["agentGlobs"] as const;
 const ALLOWED_MODEL_KEYS = ["provider", "model", "apiKeyEnv", "baseURL"] as const;
 const ALLOWED_CUSTOM_AGENT_KEYS = ["globs", "instructionsFile"] as const;
@@ -28,6 +28,8 @@ export interface RepoConfigOverride {
   readonly routing: UserRoutingConfigOverride | null;
   readonly model: UserModelConfigOverride | null;
   readonly agents: CustomAgentsMap | null;
+  /** Glob patterns whose matching files are dropped before routing (no agent reviews them). */
+  readonly exclude: readonly string[] | null;
 }
 
 export class RepoConfigError extends Error {
@@ -74,7 +76,18 @@ export function parseRepoConfig(raw: string | null): RepoConfigOverride | null {
     routing: parseRoutingSection(root["routing"]),
     model: parseModelSection(root["model"]),
     agents: parseAgentsSection(root["agents"]),
+    exclude: parseExcludeSection(root["exclude"]),
   };
+}
+
+/**
+ * Parses and validates the `exclude` section — a flat array of glob patterns whose matching files
+ * are dropped before routing. Returns `null` when absent. An empty array hard-fails (via
+ * `validateGlobsArray`), consistent with the other glob arrays.
+ */
+function parseExcludeSection(exclude: unknown): readonly string[] | null {
+  if (exclude === undefined) return null;
+  return validateGlobsArray(exclude, "exclude");
 }
 
 /**
