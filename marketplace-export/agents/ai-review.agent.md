@@ -41,16 +41,24 @@ several reviewers; send it to every reviewer it matches. Files matching nothing 
 This bundle targets **Java / Kotlin / Spring** codebases (the reviewers are all Spring-oriented), so
 the globs cover JVM sources plus the SQL and Python files that show up as scripts/migrations.
 
-| Reviewer       | Globs |
-|----------------|-------|
-| `clean-coder`  | `**/src/**/*.{java,kt,groovy,py}`, `**/lib/**/*.{...}`, `**/app/**/*.{...}` |
-| `tester`       | `**/{test,tests,spec,specs}/**/*.{...}`, `**/*.{test,spec}.{...}`, `**/{junit,spock}.config.*`, `**/pom.xml`, `**/build.gradle`, `**/build.gradle.kts` |
-| `architect`    | `**/{api,rest,controller,controllers,handler,handlers,routes,router}/**/*.{...}`, `**/{config,configuration,module,modules}/**/*.{...,yml,yaml,json,properties}`, `**/src/main/**/*.{...,yml,yaml,properties}` |
-| `ddd-reviewer` | `**/{domain,model,models,aggregate,aggregates,entity,entities,value-object,value-objects,vo,event,events,bounded-context}/**/*.{...}`, `**/*{Aggregate,Entity,ValueObject,DomainEvent,DomainService}.{...}` |
-| `performance`  | `**/{repository,repositories,dao,daos,persistence,query,queries,sql,cache,caching}/**/*.{...}`, `**/*{Repository,Dao,Query,Cache,Client}.{...}`, `**/*.sql` |
+Routing is by **role/layer directory name**, not by a fixed project shape, so it works across
+layered, **hexagonal (ports & adapters)**, **onion**, and **modular-monolith** layouts. Because every
+pattern is `**/{role}/**`, a role directory is matched wherever it sits — including nested inside a
+per-feature module (e.g. `.../orders/domain/...`, `.../billing/infrastructure/...`). Treat the lists
+as synonyms for the same role; if a project uses a name not listed here, the closest-role reviewer
+still applies via the file-name-suffix patterns and the `**/src/main/**` catch-all.
+
+| Reviewer       | Role it owns | Globs |
+|----------------|--------------|-------|
+| `clean-coder`  | any production source | `**/src/**/*.{java,kt,groovy,py}`, `**/lib/**/*.{...}`, `**/app/**/*.{...}` |
+| `tester`       | tests & build | `**/{test,tests,spec,specs,it,integration-test}/**/*.{...}`, `**/*.{test,spec,it,Test,IT,Spec}.{...}`, `**/{junit,spock}.config.*`, `**/pom.xml`, `**/build.gradle`, `**/build.gradle.kts` |
+| `architect`    | entrypoints, boundaries, wiring, adapters | `**/{api,rest,web,controller,controllers,resource,resources,endpoint,endpoints,handler,handlers,routes,router,graphql,grpc,messaging,consumer,consumers,listener,listeners,producer,producers,adapter,adapters,port,ports,inbound,outbound,primary,secondary,infrastructure,infra,gateway,gateways}/**/*.{...}`, `**/{config,configuration,bootstrap,module,modules}/**/*.{...,yml,yaml,json,properties}`, `**/src/main/**/*.{...,yml,yaml,properties}` |
+| `ddd-reviewer` | domain model & application core | `**/{domain,model,models,aggregate,aggregates,entity,entities,value-object,value-objects,vo,event,events,bounded-context,application,usecase,usecases,use-case,use-cases,command,commands,policy,policies,specification,specifications}/**/*.{...}`, `**/*{Aggregate,Entity,ValueObject,DomainEvent,DomainService,UseCase,Command,Policy,Specification}.{...}` |
+| `performance`  | data access & integration | `**/{repository,repositories,dao,daos,persistence,jpa,jdbc,mapper,mappers,query,queries,sql,cache,caching,infrastructure,infra,adapter,adapters,gateway,gateways,client,clients}/**/*.{...}`, `**/*{Repository,Dao,Query,Cache,Client,Adapter,Mapper,Gateway}.{...}`, `**/*.sql` |
 
 `{...}` is the source-file extension set: `{java,kt,groovy,py}` (the `architect` config/main globs
 additionally allow `yml,yaml,json,properties`; `performance` additionally matches `**/*.sql`).
+A file can match several reviewers — that's expected; send it to each one it matches.
 
 ---
 
