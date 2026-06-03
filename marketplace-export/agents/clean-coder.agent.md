@@ -2,6 +2,7 @@
 name: clean-coder
 description: "Code quality reviewer focused on Clean Code principles: SOLID, naming, readability, method complexity, code smells. Use when reviewing Java/Groovy code for maintainability and craftsmanship issues."
 tools: [read, search]
+model: claude-haiku-4.5
 ---
 
 # Clean Coder — Code Review Agent

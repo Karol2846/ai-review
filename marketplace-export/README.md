@@ -37,6 +37,28 @@ Ask for a **clean** and every line containing the `[ai-review]` marker is remove
 A single orchestrator agent (`ai-review`) drives the whole pipeline and delegates to these reviewers
 as subagents — it's the only agent you interact with.
 
+## Per-agent models (cost tiering)
+
+Each agent pins its own model via the `model:` field in its front matter. In the Copilot CLI a
+custom agent's own `model` has the **highest precedence** (above `--model`, `COPILOT_MODEL`,
+`settings.json`, and the default), and every subagent runs on the model from its own definition — so
+the heavy-reasoning lanes use a stronger model while the mechanical lanes use a cheaper, faster one:
+
+| Agent              | Model               | Why |
+|--------------------|---------------------|-----|
+| ai-review (orchestrator) | `claude-sonnet-4.5` | Routing, aggregation, and precise in-place edits |
+| architect          | `claude-sonnet-4.5` | Contracts, coupling, failure modes — needs reasoning |
+| ddd-reviewer       | `claude-sonnet-4.5` | Nuanced domain-design judgment |
+| clean-coder        | `claude-haiku-4.5`  | Style / readability — pattern-level, cheap |
+| tester             | `claude-haiku-4.5`  | Coverage gaps — pattern-level, cheap |
+| performance        | `claude-haiku-4.5`  | Loop/query smells — pattern-level, cheap |
+
+Notes:
+- The value must be a **string** (e.g. `model: claude-haiku-4.5`); array syntax breaks agent loading
+  in the CLI.
+- Available model slugs depend on your org/plan — run `copilot help` to see the exact list (e.g. you
+  can promote `architect`/`ddd-reviewer` to a `*-opus-*` model for max quality).
+
 ## What's inside
 
 ```

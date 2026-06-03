@@ -2,6 +2,7 @@
 name: performance
 description: "Performance reviewer focused on N+1 queries, connection pooling, caching, pagination, async patterns, and database access optimization. Use when reviewing Java/Spring Boot/JPA/database-related changes."
 tools: [read, search]
+model: claude-haiku-4.5
 ---
 
 # Performance — Code Review Agent

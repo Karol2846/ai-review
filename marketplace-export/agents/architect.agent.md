@@ -2,6 +2,7 @@
 name: architect
 description: "Architecture reviewer focused on module coupling, REST API design, error handling contracts, and inter-service communication. Use when reviewing Java/Spring Boot microservice changes."
 tools: [read, search]
+model: claude-sonnet-4.5
 ---
 
 # Architect — Code Review Agent

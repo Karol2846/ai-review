@@ -2,6 +2,7 @@
 name: ddd-reviewer
 description: "Domain-Driven Design reviewer focused on aggregates, value objects, domain events, bounded contexts, and ubiquitous language. Use when reviewing Java/Spring Boot domain model changes."
 tools: [read, search]
+model: claude-sonnet-4.5
 ---
 
 # DDD Reviewer — Code Review Agent

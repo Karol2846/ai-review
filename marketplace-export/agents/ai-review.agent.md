@@ -3,6 +3,7 @@ name: ai-review
 description: "Multi-agent code review orchestrator. Reviews the changes on the current branch (git diff against the base branch) by delegating each changed file to specialized reviewer subagents (clean-coder, tester, architect, ddd-reviewer, performance), then annotates the source files in place with `// TODO ... [ai-review]` comments. Use when asked to review the current branch, review my changes, or run ai-review. Runs entirely inside Copilot — no external CLI, no API keys."
 tools: [execute, edit, read, search, agent]
 infer: true
+model: claude-sonnet-4.5
 ---
 
 # ai-review — Code Review Orchestrator

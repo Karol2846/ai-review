@@ -2,6 +2,7 @@
 name: tester
 description: "Test quality reviewer focused on test coverage, edge cases, Spock/Groovy test patterns, and test reliability. Use when reviewing test adequacy of Java/Spring Boot changes."
 tools: [read, search]
+model: claude-haiku-4.5
 ---
 
 # Tester — Code Review Agent
