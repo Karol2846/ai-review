@@ -38,16 +38,19 @@ If there are no changed files, report "no changes to review" and stop.
 Match each changed file (repo-relative path) against the glob patterns below. A file can match
 several reviewers; send it to every reviewer it matches. Files matching nothing are skipped.
 
+This bundle targets **Java / Kotlin / Spring** codebases (the reviewers are all Spring-oriented), so
+the globs cover JVM sources plus the SQL and Python files that show up as scripts/migrations.
+
 | Reviewer       | Globs |
 |----------------|-------|
-| `clean-coder`  | `**/src/**/*.{ts,tsx,js,jsx,java,kt,groovy,go,py}`, `**/lib/**/*.{...}`, `**/app/**/*.{...}`, `**/packages/*/src/**/*.{...}` |
-| `tester`       | `**/{test,tests,__tests__,spec,specs}/**/*.{...}`, `**/*.{test,spec}.{...}`, `**/{jest,vitest,mocha,junit,spock,cypress,playwright}.config.{js,cjs,mjs,ts}`, `**/pom.xml`, `**/build.gradle`, `**/build.gradle.kts` |
+| `clean-coder`  | `**/src/**/*.{java,kt,groovy,py}`, `**/lib/**/*.{...}`, `**/app/**/*.{...}` |
+| `tester`       | `**/{test,tests,spec,specs}/**/*.{...}`, `**/*.{test,spec}.{...}`, `**/{junit,spock}.config.*`, `**/pom.xml`, `**/build.gradle`, `**/build.gradle.kts` |
 | `architect`    | `**/{api,rest,controller,controllers,handler,handlers,routes,router}/**/*.{...}`, `**/{config,configuration,module,modules}/**/*.{...,yml,yaml,json,properties}`, `**/src/main/**/*.{...,yml,yaml,properties}` |
 | `ddd-reviewer` | `**/{domain,model,models,aggregate,aggregates,entity,entities,value-object,value-objects,vo,event,events,bounded-context}/**/*.{...}`, `**/*{Aggregate,Entity,ValueObject,DomainEvent,DomainService}.{...}` |
 | `performance`  | `**/{repository,repositories,dao,daos,persistence,query,queries,sql,cache,caching}/**/*.{...}`, `**/*{Repository,Dao,Query,Cache,Client}.{...}`, `**/*.sql` |
 
-`{...}` is the code-file extension set: `{ts,tsx,js,jsx,java,kt,groovy,go,py}` (the `architect`
-config/main globs additionally allow `yml,yaml,json,properties`).
+`{...}` is the source-file extension set: `{java,kt,groovy,py}` (the `architect` config/main globs
+additionally allow `yml,yaml,json,properties`; `performance` additionally matches `**/*.sql`).
 
 ---
 
@@ -118,8 +121,8 @@ behavior exactly:
   insertions don't shift the line numbers of later ones.
 
 When the user asks to **clean / remove** previous annotations instead of reviewing: scan the repo's
-source files (skip `.git` and `node_modules`) and delete every line that contains the `[ai-review]`
-marker. Do not run the review phases in clean mode.
+source files (skip `.git` and build output directories such as `target/` and `build/`) and delete
+every line that contains the `[ai-review]` marker. Do not run the review phases in clean mode.
 
 ---
 

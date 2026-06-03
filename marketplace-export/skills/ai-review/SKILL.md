@@ -1,6 +1,6 @@
 ---
 name: ai-review
-description: "Run a multi-agent code review of the changes on the current branch and annotate the changed files in place with `// TODO ... [ai-review]` comments. Use when the user asks to review my changes, review the current branch, run a code review, or run ai-review. Pure Copilot — no external CLI, no API keys, no provider setup."
+description: "Run a multi-agent code review of the changes on the current branch and annotate the changed files in place with `// TODO ... [ai-review]` comments. Use when the user asks to review my changes, review the current branch."
 allowed-tools: shell, edit, agent
 ---
 
