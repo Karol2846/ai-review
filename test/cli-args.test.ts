@@ -36,8 +36,8 @@ describe("parseCliArgs", () => {
       "tester, architect",
       "--severity",
       "warning",
-      "--files",
-      "  src/**/*.ts  ",
+      "--exclude",
+      "  **/*.generated.ts , vendor/** ",
       "--parallel",
       "3",
       "-h",
@@ -53,7 +53,7 @@ describe("parseCliArgs", () => {
       baseBranch: "develop",
       agents: ["tester", "architect"],
       minSeverity: "warning",
-      fileFilter: "src/**/*.ts",
+      exclude: ["**/*.generated.ts", "vendor/**"],
       maxParallel: 3,
     });
   });
@@ -80,8 +80,8 @@ describe("parseCliArgs", () => {
     expectCliArgsError(["--base", "   "], /"--base" must not be empty/u);
   });
 
-  it("throws for empty --files", () => {
-    expectCliArgsError(["--files", "   "], /"--files" must not be empty/u);
+  it("throws for empty or whitespace --exclude list", () => {
+    expectCliArgsError(["--exclude", " ,  , "], /"--exclude" must include at least one non-empty value/u);
   });
 
   it("throws for empty or whitespace --agents list", () => {
@@ -115,7 +115,7 @@ describe("formatCliUsage", () => {
     expect(usage).toContain("--clean");
     expect(usage).toContain("--agents <list>");
     expect(usage).toContain("--severity <min>");
-    expect(usage).toContain("--files <glob>");
+    expect(usage).toContain("--exclude <list>");
     expect(usage).toContain("--json");
     expect(usage).toContain("--debug");
     expect(usage).toContain("--parallel <n>");

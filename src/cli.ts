@@ -214,8 +214,13 @@ function normalizeGlobPath(filePath: string): string {
   return filePath.replace(/\\/gu, "/");
 }
 
-function filterChangedFiles(changedFiles: readonly string[], fileFilter: string): string[] {
-  return changedFiles.filter((filePath) => micromatch.isMatch(normalizeGlobPath(filePath), fileFilter));
+function excludeChangedFiles(
+  changedFiles: readonly string[],
+  excludeGlobs: readonly string[]
+): string[] {
+  return changedFiles.filter(
+    (filePath) => !micromatch.isMatch(normalizeGlobPath(filePath), excludeGlobs)
+  );
 }
 
 interface FilteredRoutingConfigResult {
@@ -373,8 +378,42 @@ export async function runCli(
     writeDebug(options.debug, `merge-base = ${mergeBase}`, deps.writeStderr);
     writeDebug(options.debug, `HEAD = ${headSha}`, deps.writeStderr);
 
-    if (options.fileFilter) {
-      changedFiles = filterChangedFiles(changedFiles, options.fileFilter);
+    let routingConfig: RoutingRuntimeConfig;
+    let modelOverride: UserModelConfigOverride | null = null;
+    let customAgents: CustomAgentsMap | null = null;
+    let configExclude: readonly string[] | null = null;
+    try {
+      const repoConfigRaw = deps.readRepoConfigFile(repoRootPath);
+      const repoConfigOverride = parseRepoConfig(repoConfigRaw);
+      routingConfig = mergeRoutingConfig(defaultRoutingConfig, repoConfigOverride?.routing ?? null);
+      customAgents = repoConfigOverride?.agents ?? null;
+      // Fold custom agents' globs into the routing config so the pipeline routes files to them.
+      routingConfig = mergeRoutingConfig(routingConfig, customAgentsToRoutingOverride(customAgents));
+      modelOverride = repoConfigOverride?.model ?? null;
+      configExclude = repoConfigOverride?.exclude ?? null;
+      if (options.debug && repoConfigOverride !== null) {
+        const extendedAgents = Object.keys(repoConfigOverride.routing?.agentGlobs ?? {});
+        const modelKeys = modelOverride ? Object.keys(modelOverride) : [];
+        const customAgentNames = customAgents ? Object.keys(customAgents) : [];
+        deps.writeStderr(
+          `DEBUG: loaded ${REPO_CONFIG_FILE_NAME} — extended routing for: ${extendedAgents.join(", ") || "none"}` +
+            (customAgentNames.length > 0 ? `; custom agents: ${customAgentNames.join(", ")}` : "") +
+            (modelKeys.length > 0 ? `; model override: ${modelKeys.join(", ")}` : "") +
+            (configExclude ? `; exclude globs: ${configExclude.length}` : "")
+        );
+      }
+    } catch (err) {
+      if (err instanceof RepoConfigError) {
+        deps.writeStderr(`Error: ${err.message}`);
+        return 1;
+      }
+      throw err;
+    }
+
+    // Effective exclusions: union of repo-config `exclude` and `--exclude` globs (dedup).
+    const effectiveExclude = [...new Set([...(configExclude ?? []), ...(options.exclude ?? [])])];
+    if (effectiveExclude.length > 0) {
+      changedFiles = excludeChangedFiles(changedFiles, effectiveExclude);
     }
 
     writeDebug(options.debug, `changed files: ${changedFiles.length}`, deps.writeStderr);
@@ -388,35 +427,6 @@ export async function runCli(
         deps.writeStdout(`No changes detected against ${toOriginRef(baseBranch)}.`);
       }
       return 0;
-    }
-
-    let routingConfig: RoutingRuntimeConfig;
-    let modelOverride: UserModelConfigOverride | null = null;
-    let customAgents: CustomAgentsMap | null = null;
-    try {
-      const repoConfigRaw = deps.readRepoConfigFile(repoRootPath);
-      const repoConfigOverride = parseRepoConfig(repoConfigRaw);
-      routingConfig = mergeRoutingConfig(defaultRoutingConfig, repoConfigOverride?.routing ?? null);
-      customAgents = repoConfigOverride?.agents ?? null;
-      // Fold custom agents' globs into the routing config so the pipeline routes files to them.
-      routingConfig = mergeRoutingConfig(routingConfig, customAgentsToRoutingOverride(customAgents));
-      modelOverride = repoConfigOverride?.model ?? null;
-      if (options.debug && repoConfigOverride !== null) {
-        const extendedAgents = Object.keys(repoConfigOverride.routing?.agentGlobs ?? {});
-        const modelKeys = modelOverride ? Object.keys(modelOverride) : [];
-        const customAgentNames = customAgents ? Object.keys(customAgents) : [];
-        deps.writeStderr(
-          `DEBUG: loaded ${REPO_CONFIG_FILE_NAME} — extended routing for: ${extendedAgents.join(", ") || "none"}` +
-            (customAgentNames.length > 0 ? `; custom agents: ${customAgentNames.join(", ")}` : "") +
-            (modelKeys.length > 0 ? `; model override: ${modelKeys.join(", ")}` : "")
-        );
-      }
-    } catch (err) {
-      if (err instanceof RepoConfigError) {
-        deps.writeStderr(`Error: ${err.message}`);
-        return 1;
-      }
-      throw err;
     }
 
     // No `--agents` flag → run every configured agent (built-in + custom).

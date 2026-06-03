@@ -155,7 +155,7 @@ Comment syntax per file type:
 --base <branch>    Base branch for diff (default: auto-detect)
 --agents <list>    Comma-separated agent list (default: all)
 --severity <min>   Minimum severity: critical, warning, info (default: info)
---files <glob>     Filter changed files by glob pattern
+--exclude <list>   Comma-separated glob patterns to exclude from review
 --report           Print terminal report (annotations are default)
 --clean            Remove previous [ai-review] TODO comments
 --json             Output raw JSON findings
@@ -184,8 +184,8 @@ ai-review --base main
 
 ### Focus on a specific lens
 ```bash
-ai-review --agents "architect"              # only architecture issues
-ai-review --agents "tester" --files "*.java"
+ai-review --agents "architect"                       # only architecture issues
+ai-review --exclude "**/*.generated.ts,vendor/**"    # skip generated/vendored files
 ```
 
 ### Debug when something seems wrong
@@ -292,6 +292,18 @@ Create `ai-review.json` in your project root to extend the default routing for y
 ```
 
 **Allowed agent names:** `clean-coder`, `tester`, `architect`, `ddd-reviewer`, `performance`
+
+### Excluding files
+
+Add an `exclude` array of glob patterns to drop matching files **before routing** — no agent reviews them. Useful for generated, vendored, or snapshot files:
+
+```json
+{
+  "exclude": ["**/*.generated.ts", "vendor/**"]
+}
+```
+
+The `--exclude` CLI flag (comma-separated globs) adds to this list: the effective set is the **union** of `ai-review.json` and `--exclude`, deduplicated.
 
 Unknown keys or agent names cause a hard-fail with a clear error message. If the file is absent, defaults apply unchanged.
 
