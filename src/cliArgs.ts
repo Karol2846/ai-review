@@ -12,6 +12,10 @@ export interface CliOptions {
   readonly json: boolean;
   readonly debug: boolean;
   readonly showHelp: boolean;
+  /** Set to `"init"` when the user runs `ai-review init`. Omitted for normal review runs. */
+  readonly command?: "init";
+  /** `true` when `--force` is passed (used with `init` to overwrite an existing config). */
+  readonly force: boolean;
   readonly baseBranch?: string;
   /** Agents requested via `--agents`. Omitted when the flag is absent (run all configured agents). */
   readonly agents?: readonly string[];
@@ -88,6 +92,10 @@ export function formatCliUsage(): string {
     "ai-review - Multi-Agent Local Code Review",
     "",
     "Usage: ai-review [OPTIONS]",
+    "       ai-review init [--force]",
+    "",
+    "Commands:",
+    "  init               Scaffold an example ai-review.json in the current directory",
     "",
     "Options:",
     "  --base <branch>    Base branch for diff (default: auto-detect)",
@@ -99,6 +107,7 @@ export function formatCliUsage(): string {
     "  --json             Output raw JSON findings",
     "  --debug            Show raw agent output and timings for debugging",
     "  --parallel <n>     Max parallel agent invocations (default: 5)",
+    "  --force            Overwrite an existing ai-review.json (with init)",
     "  -h, --help         Show this help",
   ].join("\n");
 }
@@ -133,15 +142,17 @@ function readBooleanFlag(value: unknown): boolean {
 
 export function parseCliArgs(argv: readonly string[]): CliOptions {
   let parsedValues: ReturnType<typeof parseArgs>["values"];
+  let positionals: string[];
 
   try {
-    parsedValues = parseArgs({
+    const parsed = parseArgs({
       args: [...argv],
       options: {
         report: { type: "boolean" },
         clean: { type: "boolean" },
         json: { type: "boolean" },
         debug: { type: "boolean" },
+        force: { type: "boolean" },
         base: { type: "string" },
         agents: { type: "string" },
         severity: { type: "string" },
@@ -150,13 +161,28 @@ export function parseCliArgs(argv: readonly string[]): CliOptions {
         help: { type: "boolean", short: "h" },
       },
       strict: true,
-      allowPositionals: false,
-    }).values;
+      allowPositionals: true,
+    });
+    parsedValues = parsed.values;
+    positionals = parsed.positionals;
   } catch (error) {
     if (error instanceof Error && error.message.trim().length > 0) {
       throw new CliArgsError(error.message.trim());
     }
     throw new CliArgsError("Failed to parse CLI arguments.");
+  }
+
+  let command: "init" | undefined;
+  if (positionals.length > 0) {
+    if (positionals[0] !== "init") {
+      throw new CliArgsError(
+        `Unknown command "${positionals[0]}". The only command is "init".`
+      );
+    }
+    if (positionals.length > 1) {
+      throw new CliArgsError(`"init" takes no extra arguments.`);
+    }
+    command = "init";
   }
 
   const baseBranch = parseOptionalNonEmpty(readOptionalStringValue(parsedValues.base, "--base"), "--base");
@@ -177,6 +203,8 @@ export function parseCliArgs(argv: readonly string[]): CliOptions {
     json: readBooleanFlag(parsedValues.json),
     debug: readBooleanFlag(parsedValues.debug),
     showHelp: readBooleanFlag(parsedValues.help),
+    force: readBooleanFlag(parsedValues.force),
+    ...(command !== undefined ? { command } : {}),
     ...(baseBranch !== undefined ? { baseBranch } : {}),
     ...(agents !== undefined ? { agents } : {}),
     minSeverity,

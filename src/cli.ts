@@ -21,6 +21,7 @@ import {readFileSync} from "node:fs";
 
 import {CliArgsError, type CliOptions, formatCliUsage, parseCliArgs} from "./cliArgs";
 import {defaultRoutingConfig} from "./defaultConfig";
+import {runInit} from "./init";
 import {getChangedFiles, getMergeBase} from "./git";
 import {
   loadInstallProviderConfig,
@@ -341,6 +342,22 @@ export async function runCli(
   if (options.showHelp) {
     deps.writeStdout(deps.formatUsage());
     return 0;
+  }
+
+  if (options.command === "init") {
+    let gitRepoRoot: string | null;
+    try {
+      gitRepoRoot = await deps.resolveRepoRoot();
+    } catch {
+      gitRepoRoot = null;
+    }
+    return runInit({
+      cwd: process.cwd(),
+      force: options.force,
+      gitRepoRoot,
+      writeStdout: deps.writeStdout,
+      writeStderr: deps.writeStderr,
+    });
   }
 
   let repoRootPath: string;

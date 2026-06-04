@@ -18,10 +18,12 @@ describe("parseCliArgs", () => {
       json: false,
       debug: false,
       showHelp: false,
+      force: false,
       minSeverity: "info",
       maxParallel: 5,
     });
     expect(result.agents).toBeUndefined();
+    expect(result.command).toBeUndefined();
   });
 
   it("parses all supported flags and values", () => {
@@ -50,6 +52,7 @@ describe("parseCliArgs", () => {
       json: true,
       debug: true,
       showHelp: true,
+      force: false,
       baseBranch: "develop",
       agents: ["tester", "architect"],
       minSeverity: "warning",
@@ -92,6 +95,35 @@ describe("parseCliArgs", () => {
     expectCliArgsError(["--unknown-flag"], /unknown/iu);
   });
 
+  it("parses 'init' positional as command", () => {
+    const result = parseCliArgs(["init"]);
+
+    expect(result.command).toBe("init");
+    expect(result.force).toBe(false);
+  });
+
+  it("parses --force flag", () => {
+    const result = parseCliArgs(["init", "--force"]);
+
+    expect(result.command).toBe("init");
+    expect(result.force).toBe(true);
+  });
+
+  it("sets command to undefined when no positional is given (normal review run)", () => {
+    const result = parseCliArgs(["--report"]);
+
+    expect(result.command).toBeUndefined();
+    expect(result.force).toBe(false);
+  });
+
+  it("throws for unknown command positional", () => {
+    expectCliArgsError(["foo"], /Unknown command "foo"\. The only command is "init"\./u);
+  });
+
+  it("throws when extra positional is passed after init", () => {
+    expectCliArgsError(["init", "extra"], /"init" takes no extra arguments/u);
+  });
+
   it("throws for --parallel with decimal value", () => {
     expectCliArgsError(["--parallel", "1.5"], /"--parallel" must be a positive integer/u);
   });
@@ -120,5 +152,12 @@ describe("formatCliUsage", () => {
     expect(usage).toContain("--debug");
     expect(usage).toContain("--parallel <n>");
     expect(usage).toContain("-h, --help");
+  });
+
+  it("includes the init command and --force flag", () => {
+    const usage = formatCliUsage();
+
+    expect(usage).toContain("init");
+    expect(usage).toContain("--force");
   });
 });

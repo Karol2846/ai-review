@@ -14,6 +14,7 @@ export { aggregateFindings, buildFindingFingerprint, isFindingSeverity } from ".
 export { runReviewPipeline } from "./reviewPipeline";
 export { formatCliUsage, parseCliArgs, CliArgsError } from "./cliArgs";
 export { runCli } from "./cli";
+export { runInit, renderInitTemplate, INIT_TEMPLATE } from "./init";
 export { renderReport } from "./reporter";
 export { applyAnnotations, cleanAnnotations, AnnotatorError } from "./annotator";
 export { AGENT_NAMES } from "./routingTypes";
@@ -96,6 +97,7 @@ export type {
 } from "./reviewPipeline";
 export type { CliOptions } from "./cliArgs";
 export type { CliRuntimeDependencies } from "./cli";
+export type { RunInitParams } from "./init";
 export type { ReporterFinding, RenderReportOptions } from "./reporter";
 export type {
   AnnotationFinding,
