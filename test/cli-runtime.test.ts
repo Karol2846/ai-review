@@ -502,15 +502,13 @@ describe("runCli runtime flow", () => {
   it("passes the ai-review.json model override to resolveLanguageModel", async () => {
     const deps = createRuntimeDeps();
     deps.readRepoConfigFile.mockReturnValue(
-      JSON.stringify({ model: { model: "gpt-4o-mini" } })
+      JSON.stringify({ model: "gpt-4o-mini" })
     );
 
     const exitCode = await runCli(["--json"], deps.overrides);
 
     expect(exitCode).toBe(0);
-    expect(deps.resolveLanguageModel).toHaveBeenCalledWith(expect.any(Function), {
-      model: "gpt-4o-mini",
-    });
+    expect(deps.resolveLanguageModel).toHaveBeenCalledWith(expect.any(Function), "gpt-4o-mini");
   });
 
   it("passes a null model override when ai-review.json has no model section", async () => {

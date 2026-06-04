@@ -1,8 +1,4 @@
-import {
-  type ProviderKind,
-  PROVIDER_KINDS,
-  type UserModelConfigOverride,
-} from "./installProviderConfig";
+import { type UserModelConfigOverride } from "./installProviderConfig";
 import {
   AGENT_NAMES,
   type AgentDefinition,
@@ -18,7 +14,6 @@ export const REPO_CONFIG_FILE_NAME = "ai-review.json";
 const ALLOWED_ROOT_KEYS = ["model", "agents", "exclude"] as const;
 const ALLOWED_BUILTIN_AGENT_KEYS = ["globs", "replace"] as const;
 const ALLOWED_CUSTOM_AGENT_KEYS = ["globs", "instructionsFile"] as const;
-const ALLOWED_MODEL_KEYS = ["provider", "model", "apiKeyEnv", "baseURL"] as const;
 const BUILTIN_AGENT_NAMES = new Set<string>(AGENT_NAMES);
 const CUSTOM_AGENT_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/iu;
 
@@ -242,63 +237,23 @@ export function agentsToRoutingOverride(agents: AgentsMap | null): UserRoutingCo
   return { agentGlobs };
 }
 
+/**
+ * Parses the `model` section — a plain string naming the model to use for this repo.
+ * Only the model name is overridable per repo; provider, API-key env var, and baseURL come from the
+ * install config (re-run the install wizard to change those).
+ */
 function parseModelSection(model: unknown): UserModelConfigOverride | null {
   if (model === undefined) return null;
 
-  if (typeof model !== "object" || model === null || Array.isArray(model)) {
-    throw new RepoConfigError(`${REPO_CONFIG_FILE_NAME}: "model" must be an object.`);
-  }
-
-  const modelObj = model as Record<string, unknown>;
-  const unknownModelKeys = Object.keys(modelObj).filter(
-    (k) => !(ALLOWED_MODEL_KEYS as readonly string[]).includes(k)
-  );
-  if (unknownModelKeys.length > 0) {
+  const trimmed = typeof model === "string" ? model.trim() : "";
+  if (trimmed.length === 0) {
     throw new RepoConfigError(
-      `${REPO_CONFIG_FILE_NAME}: unknown key(s) in "model": "${unknownModelKeys.join('", "')}". ` +
-        `Allowed: ${ALLOWED_MODEL_KEYS.join(", ")}.`
+      `${REPO_CONFIG_FILE_NAME}: "model" must be a non-empty string naming the model ` +
+        `(e.g. "claude-haiku-4-5"). To change provider, API key env, or baseURL, re-run the install wizard.`
     );
   }
 
-  const override: {
-    provider?: ProviderKind;
-    model?: string;
-    apiKeyEnv?: string;
-    baseURL?: string;
-  } = {};
-
-  if (modelObj["provider"] !== undefined) {
-    const provider = modelObj["provider"];
-    if (typeof provider !== "string" || !(PROVIDER_KINDS as readonly string[]).includes(provider)) {
-      throw new RepoConfigError(
-        `${REPO_CONFIG_FILE_NAME}: "model.provider" must be one of: ${PROVIDER_KINDS.join(", ")}.`
-      );
-    }
-    override.provider = provider as ProviderKind;
-  }
-
-  for (const key of ["model", "apiKeyEnv", "baseURL"] as const) {
-    const value = modelObj[key];
-    if (value === undefined) continue;
-    if (typeof value !== "string" || value.trim().length === 0) {
-      throw new RepoConfigError(
-        `${REPO_CONFIG_FILE_NAME}: "model.${key}" must be a non-empty string.`
-      );
-    }
-    override[key] = value.trim();
-  }
-
-  if (override.baseURL !== undefined) {
-    try {
-      new URL(override.baseURL);
-    } catch {
-      throw new RepoConfigError(
-        `${REPO_CONFIG_FILE_NAME}: "model.baseURL" is not a valid URL: "${override.baseURL}".`
-      );
-    }
-  }
-
-  return override;
+  return trimmed;
 }
 
 /**

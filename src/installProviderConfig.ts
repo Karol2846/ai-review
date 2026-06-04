@@ -15,15 +15,11 @@ export interface InstallProviderConfig {
 }
 
 /**
- * Per-repo partial override of the provider config (from the `model` section of `ai-review.json`).
- * Every field is optional; absent fields are inherited from the install config during merge.
+ * Per-repo model override (the `model` section of `ai-review.json`): just the model name.
+ * Provider, API-key env var, and baseURL always come from the install config — to change those,
+ * re-run the install wizard.
  */
-export interface UserModelConfigOverride {
-  readonly provider?: ProviderKind;
-  readonly model?: string;
-  readonly apiKeyEnv?: string;
-  readonly baseURL?: string;
-}
+export type UserModelConfigOverride = string;
 
 export type InstallProviderConfigParseErrorCode =
   | "INVALID_JSON"
@@ -54,7 +50,7 @@ const REQUIRED_KEYS = ["provider", "model", "apiKeyEnv"] as const;
 
 /**
  * Validates the value-level constraints of a (fully resolved) provider config and returns a
- * normalized `InstallProviderConfig`. Shared by the install-config loader and the per-repo merge.
+ * normalized `InstallProviderConfig`. Used by the install-config loader.
  * `remediation` is appended to error messages to point the user at the right place to fix it.
  */
 function validateProviderConfigShape(
@@ -142,33 +138,16 @@ function parseInstallProviderConfigObject(value: unknown): InstallProviderConfig
 }
 
 /**
- * Merges a per-repo provider override into the install config (field-by-field).
- * Absent override fields are inherited from the install config. `baseURL` is inherited only when the
- * effective provider matches the install provider — switching provider drops an inherited `baseURL`
- * (a repo can still set its own). The merged result is validated as a whole and throws on invalid
- * combinations (e.g. a `baseURL` with a non-`openai-compatible` provider).
+ * Applies a per-repo model override onto the install config: only the model name changes;
+ * provider, API-key env var, and baseURL are inherited from the install config unchanged.
+ * `override` is `null` when the repo config has no `model` section.
  */
 export function mergeProviderConfig(
   base: InstallProviderConfig,
   override: UserModelConfigOverride | null
 ): InstallProviderConfig {
   if (override === null) return base;
-
-  const provider = override.provider ?? base.provider;
-  const model = override.model ?? base.model;
-  const apiKeyEnv = override.apiKeyEnv ?? base.apiKeyEnv;
-
-  let baseURL: string | undefined;
-  if (override.baseURL !== undefined) {
-    baseURL = override.baseURL;
-  } else if (provider === base.provider) {
-    baseURL = base.baseURL;
-  }
-
-  return validateProviderConfigShape(
-    { provider, model, apiKeyEnv, baseURL },
-    `Check the "model" section in ai-review.json.`
-  );
+  return { ...base, model: override };
 }
 
 export const INSTALL_PROVIDER_CONFIG_DIR = join(homedir(), ".ai-review");

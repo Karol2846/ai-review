@@ -397,12 +397,11 @@ export async function runCli(
         const customAgentNames = agentsMap
           ? Object.entries(agentsMap).filter(([, d]) => isCustomAgent(d)).map(([n]) => n)
           : [];
-        const modelKeys = modelOverride ? Object.keys(modelOverride) : [];
         deps.writeStderr(
           `DEBUG: loaded ${REPO_CONFIG_FILE_NAME}` +
             (builtInOverrides.length > 0 ? ` — built-in overrides: ${builtInOverrides.join(", ")}` : "") +
             (customAgentNames.length > 0 ? `; custom agents: ${customAgentNames.join(", ")}` : "") +
-            (modelKeys.length > 0 ? `; model override: ${modelKeys.join(", ")}` : "") +
+            (modelOverride ? `; model override: ${modelOverride}` : "") +
             (configExclude ? `; exclude globs: ${configExclude.length}` : "")
         );
       }

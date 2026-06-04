@@ -53,68 +53,34 @@ describe("parseRepoConfig — model section", () => {
     expect(result?.model).toBeNull();
   });
 
-  it("parses a full provider override", () => {
-    const raw = JSON.stringify({
-      model: {
-        provider: "anthropic",
-        model: "claude-sonnet-4-6",
-        apiKeyEnv: "ANTHROPIC_API_KEY",
-      },
-    });
-    const result = parseRepoConfig(raw);
-    expect(result?.model).toEqual({
-      provider: "anthropic",
-      model: "claude-sonnet-4-6",
-      apiKeyEnv: "ANTHROPIC_API_KEY",
-    });
+  it("parses a model name string", () => {
+    const result = parseRepoConfig(JSON.stringify({ model: "claude-haiku-4-5" }));
+    expect(result?.model).toBe("claude-haiku-4-5");
   });
 
-  it("parses a model-name-only override", () => {
-    const result = parseRepoConfig(JSON.stringify({ model: { model: "gpt-4o" } }));
-    expect(result?.model).toEqual({ model: "gpt-4o" });
+  it("trims the model name", () => {
+    const result = parseRepoConfig(JSON.stringify({ model: "  gpt-4o  " }));
+    expect(result?.model).toBe("gpt-4o");
   });
 
-  it("trims string fields", () => {
-    const result = parseRepoConfig(JSON.stringify({ model: { model: "  gpt-4o  " } }));
-    expect(result?.model?.model).toBe("gpt-4o");
-  });
-
-  it("parses baseURL together with openai-compatible provider", () => {
-    const raw = JSON.stringify({
-      model: { provider: "openai-compatible", baseURL: "https://api.groq.com/openai/v1" },
-    });
-    const result = parseRepoConfig(raw);
-    expect(result?.model?.baseURL).toBe("https://api.groq.com/openai/v1");
-  });
-
-  it("throws on unknown key in model section", () => {
-    const raw = JSON.stringify({ model: { temperature: 0.2 } });
+  it("throws when model is an object (the removed v1 shape)", () => {
+    const raw = JSON.stringify({ model: { provider: "anthropic", model: "claude-sonnet-4-6" } });
     expect(() => parseRepoConfig(raw)).toThrow(RepoConfigError);
-    expect(() => parseRepoConfig(raw)).toThrow(/temperature/);
+    expect(() => parseRepoConfig(raw)).toThrow(/must be a non-empty string/i);
   });
 
-  it("throws when model section is not an object", () => {
-    expect(() => parseRepoConfig(JSON.stringify({ model: 42 }))).toThrow(
-      /"model" must be an object/
-    );
+  it("error for the object shape hints at re-running the wizard", () => {
+    const raw = JSON.stringify({ model: { model: "gpt-4o" } });
+    expect(() => parseRepoConfig(raw)).toThrow(/wizard/i);
   });
 
-  it("throws on invalid provider kind", () => {
-    const raw = JSON.stringify({ model: { provider: "ollama" } });
-    expect(() => parseRepoConfig(raw)).toThrow(RepoConfigError);
-    expect(() => parseRepoConfig(raw)).toThrow(/provider/);
+  it("throws on an empty model string", () => {
+    expect(() => parseRepoConfig(JSON.stringify({ model: "   " }))).toThrow(/non-empty string/i);
   });
 
-  it("throws on empty model name", () => {
-    expect(() => parseRepoConfig(JSON.stringify({ model: { model: "   " } }))).toThrow(
-      /non-empty string/i
-    );
-  });
-
-  it("throws on invalid baseURL", () => {
-    expect(() => parseRepoConfig(JSON.stringify({ model: { baseURL: "not-a-url" } }))).toThrow(
-      /valid URL/i
-    );
+  it("throws when model is a number", () => {
+    expect(() => parseRepoConfig(JSON.stringify({ model: 42 }))).toThrow(RepoConfigError);
+    expect(() => parseRepoConfig(JSON.stringify({ model: 42 }))).toThrow(/non-empty string/i);
   });
 });
 

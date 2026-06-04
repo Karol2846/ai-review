@@ -11,7 +11,10 @@
       "Bash(Select-Object -First 20)",
       "Bash(grep -E \"\\\\.\\(ts|js\\)$\")",
       "Bash(npx tsc *)",
-      "Bash(dir *)"
+      "Bash(dir *)",
+      "Bash(Select-Object -Last 20)",
+      "PowerShell(npm run *)",
+      "PowerShell(npx vitest run test/repoConfig.test.ts test/install-provider-config.test.ts test/cli-runtime.test.ts 2>&1 | Select-Object -Last 25)"
     ]
   }
 }
