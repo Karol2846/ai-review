@@ -31,6 +31,7 @@ export {
   parseRepoConfig,
   mergeRoutingConfig,
   agentsToRoutingOverride,
+  isCustomAgent,
 } from "./repoConfig";
 export { createLanguageModel } from "./llmClient";
 export type {

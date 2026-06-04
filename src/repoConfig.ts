@@ -219,6 +219,17 @@ function parseCustomAgentEntry(
 }
 
 /**
+ * A custom agent is distinguished from a built-in override by the presence of an explicit
+ * `instructionsFile` (built-ins load their instructions from the agents/ directory). The parser
+ * guarantees this invariant: built-in entries never carry `instructionsFile`, customs always do.
+ */
+export function isCustomAgent(
+  definition: AgentDefinition
+): definition is AgentDefinition & { instructionsFile: string } {
+  return definition.instructionsFile !== undefined;
+}
+
+/**
  * Projects an `AgentsMap` onto a routing override so all agent globs (built-in extends/replaces
  * and custom agent globs) can be folded into the runtime routing config via `mergeRoutingConfig`.
  */

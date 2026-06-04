@@ -29,7 +29,7 @@ import {
   type UserModelConfigOverride,
 } from "./installProviderConfig";
 import {createLanguageModel} from "./llmClient";
-import {parseRepoConfig, mergeRoutingConfig, agentsToRoutingOverride, RepoConfigError, REPO_CONFIG_FILE_NAME} from "./repoConfig";
+import {parseRepoConfig, mergeRoutingConfig, agentsToRoutingOverride, isCustomAgent, RepoConfigError, REPO_CONFIG_FILE_NAME} from "./repoConfig";
 import {renderReport} from "./reporter";
 import {runReviewPipeline, type RunReviewPipelineInput, type RunReviewPipelineResult} from "./reviewPipeline";
 import type {AgentInstructionsByAgent, RunnerRetryConfig} from "./runner";
@@ -392,10 +392,10 @@ export async function runCli(
       configExclude = repoConfigOverride?.exclude ?? null;
       if (options.debug && repoConfigOverride !== null) {
         const builtInOverrides = agentsMap
-          ? Object.entries(agentsMap).filter(([, d]) => d.instructionsFile === undefined).map(([n]) => n)
+          ? Object.entries(agentsMap).filter(([, d]) => !isCustomAgent(d)).map(([n]) => n)
           : [];
         const customAgentNames = agentsMap
-          ? Object.entries(agentsMap).filter(([, d]) => d.instructionsFile !== undefined).map(([n]) => n)
+          ? Object.entries(agentsMap).filter(([, d]) => isCustomAgent(d)).map(([n]) => n)
           : [];
         const modelKeys = modelOverride ? Object.keys(modelOverride) : [];
         deps.writeStderr(
@@ -457,7 +457,7 @@ export async function runCli(
     const instructionFileOverrides: Record<string, string> = {};
     if (agentsMap !== null) {
       for (const [name, definition] of Object.entries(agentsMap)) {
-        if (definition.instructionsFile !== undefined) {
+        if (isCustomAgent(definition)) {
           instructionFileOverrides[name] = definition.instructionsFile;
         }
       }
@@ -474,10 +474,11 @@ export async function runCli(
     // is a configuration error.
     if (agentsMap !== null) {
       const instructions = instructionsResult.instructions;
-      const hasInstruction = (agent: string): boolean => Object.hasOwn(instructions, agent);
+      const hasInstruction = (agent: string): boolean =>
+        instructions instanceof Map ? instructions.has(agent) : Object.hasOwn(instructions, agent);
       const missingCustomAgents = filteredRoutingConfig.selectedAgents.filter((agent) => {
         const def = (agentsMap as AgentsMap)[agent];
-        return def?.instructionsFile !== undefined && !hasInstruction(agent);
+        return def !== undefined && isCustomAgent(def) && !hasInstruction(agent);
       });
       if (missingCustomAgents.length > 0) {
         const details = missingCustomAgents

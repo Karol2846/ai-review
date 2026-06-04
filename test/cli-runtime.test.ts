@@ -583,4 +583,27 @@ describe("runCli runtime flow", () => {
     );
     expect(deps.runReviewPipeline).not.toHaveBeenCalled();
   });
+
+  it("recognizes custom-agent instructions delivered as a ReadonlyMap (not a plain object)", async () => {
+    const deps = createRuntimeDeps();
+    deps.readRepoConfigFile.mockReturnValue(
+      JSON.stringify({
+        agents: { security: { globs: ["**/*.ts"], instructionsFile: "agents/security.agent.md" } },
+      })
+    );
+    // AgentInstructionsByAgent is `ReadonlyMap | Record`. When the loader returns a Map, the
+    // fail-fast must use Map.has — not Object.hasOwn (which would falsely report the agent missing).
+    deps.loadAgentInstructions.mockResolvedValue({
+      instructions: new Map([["security", "Security review"]]),
+      warnings: [],
+    });
+
+    const exitCode = await runCli(["--agents", "security", "--json"], deps.overrides);
+
+    expect(exitCode).toBe(0);
+    expect(deps.runReviewPipeline).toHaveBeenCalled();
+    expect(deps.writeStderr).not.toHaveBeenCalledWith(
+      expect.stringContaining("could not load instructions for custom agent")
+    );
+  });
 });
