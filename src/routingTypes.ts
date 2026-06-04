@@ -17,20 +17,27 @@ export interface RoutingRuntimeConfig {
   readonly unmatchedFilesPolicy: UnmatchedFilesPolicy;
 }
 
-export type UserAgentGlobsOverride = Partial<AgentGlobsMap>;
+/** Internal override entry passed to `mergeRoutingConfig` — carries replace-vs-extend flag. */
+export interface AgentGlobsEntry {
+  readonly globs: readonly string[];
+  readonly replace: boolean;
+}
+
+export type UserAgentGlobsOverride = Record<string, AgentGlobsEntry>;
 
 export interface UserRoutingConfigOverride {
   readonly agentGlobs?: UserAgentGlobsOverride;
 }
 
 /**
- * A custom agent defined per repo in `ai-review.json`'s `agents` section.
- * `globs` route changed files to the agent; `instructionsFile` is a repo-relative path to its
- * `.agent.md` instruction file (required — no default, so the source is always explicit).
+ * Unified agent definition used in `ai-review.json`'s `agents` section.
+ * - Built-in agent (name in AGENT_NAMES): `globs` required, `replace` optional, `instructionsFile` absent.
+ * - Custom agent (any other name): `globs` required, `instructionsFile` required, `replace` absent.
  */
-export interface CustomAgentDefinition {
+export interface AgentDefinition {
   readonly globs: readonly string[];
-  readonly instructionsFile: string;
+  readonly instructionsFile?: string;
+  readonly replace?: boolean;
 }
 
-export type CustomAgentsMap = Record<string, CustomAgentDefinition>;
+export type AgentsMap = Record<string, AgentDefinition>;

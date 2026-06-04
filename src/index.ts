@@ -30,7 +30,7 @@ export {
   RepoConfigError,
   parseRepoConfig,
   mergeRoutingConfig,
-  customAgentsToRoutingOverride,
+  agentsToRoutingOverride,
 } from "./repoConfig";
 export { createLanguageModel } from "./llmClient";
 export type {
@@ -43,11 +43,13 @@ export type {
   SeverityCounts,
 } from "./aggregator";
 export type {
+  AgentDefinition,
+  AgentGlobsEntry,
   AgentGlobsMap,
   AgentName,
-  CustomAgentDefinition,
-  CustomAgentsMap,
+  AgentsMap,
   RoutingRuntimeConfig,
+  UserAgentGlobsOverride,
   UserRoutingConfigOverride,
 } from "./routingTypes";
 export type {
@@ -77,6 +79,7 @@ export type {
   ProviderKind,
   UserModelConfigOverride,
 } from "./installProviderConfig";
+
 export type { RepoConfigOverride } from "./repoConfig";
 export type { LlmClientConfig } from "./llmClient";
 export type { Finding } from "./findingSchema";

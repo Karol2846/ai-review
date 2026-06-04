@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { defaultRoutingConfig } from "../src/defaultConfig";
 import {
   RepoConfigError,
-  customAgentsToRoutingOverride,
+  agentsToRoutingOverride,
   mergeRoutingConfig,
   parseRepoConfig,
 } from "../src/repoConfig";
@@ -14,130 +14,42 @@ describe("parseRepoConfig", () => {
   });
 
   it("returns null sections when file is an empty object", () => {
-    expect(parseRepoConfig("{}")).toEqual({ routing: null, model: null, agents: null, exclude: null });
-  });
-
-  it("returns empty routing override when routing section has no agentGlobs", () => {
-    const result = parseRepoConfig(JSON.stringify({ routing: {} }));
-    expect(result).toEqual({ routing: {}, model: null, agents: null, exclude: null });
-  });
-
-  it("parses valid agentGlobs for a known agent", () => {
-    const raw = JSON.stringify({
-      routing: {
-        agentGlobs: {
-          "ddd-reviewer": ["**/internal/core/**/*.java"],
-        },
-      },
-    });
-    const result = parseRepoConfig(raw);
-    expect(result).toEqual({
-      routing: {
-        agentGlobs: {
-          "ddd-reviewer": ["**/internal/core/**/*.java"],
-        },
-      },
-      model: null,
-      agents: null,
-      exclude: null,
-    });
-  });
-
-  it("parses valid agentGlobs for multiple agents", () => {
-    const raw = JSON.stringify({
-      routing: {
-        agentGlobs: {
-          "ddd-reviewer": ["**/internal/core/**/*.java"],
-          performance: ["**/infra/cache/**/*.java"],
-        },
-      },
-    });
-    const result = parseRepoConfig(raw);
-    expect(result?.routing?.agentGlobs?.["ddd-reviewer"]).toEqual(["**/internal/core/**/*.java"]);
-    expect(result?.routing?.agentGlobs?.["performance"]).toEqual(["**/infra/cache/**/*.java"]);
+    expect(parseRepoConfig("{}")).toEqual({ model: null, agents: null, exclude: null });
   });
 
   it("throws RepoConfigError on invalid JSON", () => {
     expect(() => parseRepoConfig("{bad json}")).toThrow(RepoConfigError);
-  });
-
-  it("throws RepoConfigError with message containing 'invalid JSON'", () => {
     expect(() => parseRepoConfig("{bad json}")).toThrow(/invalid JSON/i);
   });
 
   it("throws RepoConfigError on unknown root key", () => {
-    const raw = JSON.stringify({ severity: "high", routing: {} });
+    const raw = JSON.stringify({ severity: "high" });
     expect(() => parseRepoConfig(raw)).toThrow(RepoConfigError);
     expect(() => parseRepoConfig(raw)).toThrow(/unknown key/i);
     expect(() => parseRepoConfig(raw)).toThrow(/severity/);
   });
 
-  it("throws RepoConfigError with list of allowed root keys on unknown root key", () => {
+  it("error for unknown root key lists allowed keys", () => {
     const raw = JSON.stringify({ unknownThing: 1 });
-    expect(() => parseRepoConfig(raw)).toThrow(/routing/);
-  });
-
-  it("throws RepoConfigError on unknown routing key", () => {
-    const raw = JSON.stringify({ routing: { unknownOption: true } });
-    expect(() => parseRepoConfig(raw)).toThrow(RepoConfigError);
-    expect(() => parseRepoConfig(raw)).toThrow(/unknownOption/);
-  });
-
-  it("throws RepoConfigError on unknown agent name", () => {
-    const raw = JSON.stringify({
-      routing: { agentGlobs: { tester2: ["**/*.ts"] } },
-    });
-    expect(() => parseRepoConfig(raw)).toThrow(RepoConfigError);
-    expect(() => parseRepoConfig(raw)).toThrow(/tester2/);
-  });
-
-  it("error for unknown agent includes list of allowed agent names", () => {
-    const raw = JSON.stringify({
-      routing: { agentGlobs: { tester2: ["**/*.ts"] } },
-    });
-    expect(() => parseRepoConfig(raw)).toThrow(/tester/);
-    expect(() => parseRepoConfig(raw)).toThrow(/clean-coder/);
-  });
-
-  it("throws RepoConfigError when globs value is a string instead of array", () => {
-    const raw = JSON.stringify({
-      routing: { agentGlobs: { tester: "**/*.ts" } },
-    });
-    expect(() => parseRepoConfig(raw)).toThrow(RepoConfigError);
-    expect(() => parseRepoConfig(raw)).toThrow(/array/i);
-  });
-
-  it("throws RepoConfigError on empty globs array", () => {
-    const raw = JSON.stringify({
-      routing: { agentGlobs: { tester: [] } },
-    });
-    expect(() => parseRepoConfig(raw)).toThrow(RepoConfigError);
-    expect(() => parseRepoConfig(raw)).toThrow(/empty/i);
-  });
-
-  it("throws RepoConfigError on empty string glob", () => {
-    const raw = JSON.stringify({
-      routing: { agentGlobs: { tester: [""] } },
-    });
-    expect(() => parseRepoConfig(raw)).toThrow(RepoConfigError);
-    expect(() => parseRepoConfig(raw)).toThrow(/non-empty string/i);
-  });
-
-  it("throws RepoConfigError on whitespace-only glob", () => {
-    const raw = JSON.stringify({
-      routing: { agentGlobs: { tester: ["  "] } },
-    });
-    expect(() => parseRepoConfig(raw)).toThrow(RepoConfigError);
+    expect(() => parseRepoConfig(raw)).toThrow(/agents/);
+    expect(() => parseRepoConfig(raw)).toThrow(/model/);
   });
 
   it("throws RepoConfigError when root is not an object (array)", () => {
     expect(() => parseRepoConfig("[]")).toThrow(RepoConfigError);
   });
+
+  it("throws with migration hint when legacy `routing` key is present", () => {
+    const raw = JSON.stringify({ routing: { agentGlobs: { tester: ["**/*.ts"] } } });
+    expect(() => parseRepoConfig(raw)).toThrow(RepoConfigError);
+    expect(() => parseRepoConfig(raw)).toThrow(/routing.*removed.*v2/i);
+    expect(() => parseRepoConfig(raw)).toThrow(/agents\.\<name\>\.globs/);
+  });
 });
 
 describe("parseRepoConfig — model section", () => {
   it("returns null model when section is absent", () => {
-    const result = parseRepoConfig(JSON.stringify({ routing: {} }));
+    const result = parseRepoConfig(JSON.stringify({}));
     expect(result?.model).toBeNull();
   });
 
@@ -182,7 +94,7 @@ describe("parseRepoConfig — model section", () => {
   });
 
   it("throws when model section is not an object", () => {
-    expect(() => parseRepoConfig(JSON.stringify({ model: "gpt-4o" }))).toThrow(
+    expect(() => parseRepoConfig(JSON.stringify({ model: 42 }))).toThrow(
       /"model" must be an object/
     );
   });
@@ -206,12 +118,84 @@ describe("parseRepoConfig — model section", () => {
   });
 });
 
-describe("parseRepoConfig — agents section", () => {
+describe("parseRepoConfig — agents section (built-in overrides)", () => {
   it("returns null agents when section is absent", () => {
-    const result = parseRepoConfig(JSON.stringify({ routing: {} }));
+    const result = parseRepoConfig(JSON.stringify({}));
     expect(result?.agents).toBeNull();
   });
 
+  it("parses a built-in agent with globs only (extend mode)", () => {
+    const raw = JSON.stringify({
+      agents: { tester: { globs: ["**/*.spec.ts", "**/*.test.ts"] } },
+    });
+    const result = parseRepoConfig(raw);
+    expect(result?.agents?.tester).toEqual({ globs: ["**/*.spec.ts", "**/*.test.ts"] });
+  });
+
+  it("parses a built-in agent with replace: true", () => {
+    const raw = JSON.stringify({
+      agents: { "clean-coder": { globs: ["legacy/**/*.ts"], replace: true } },
+    });
+    const result = parseRepoConfig(raw);
+    expect(result?.agents?.["clean-coder"]).toEqual({ globs: ["legacy/**/*.ts"], replace: true });
+  });
+
+  it("omits replace when it is false (normalized form)", () => {
+    const raw = JSON.stringify({
+      agents: { tester: { globs: ["**/*.spec.ts"], replace: false } },
+    });
+    const result = parseRepoConfig(raw);
+    // replace: false is the default — parser does not set the field
+    expect(result?.agents?.tester).toEqual({ globs: ["**/*.spec.ts"] });
+  });
+
+  it("throws when instructionsFile is set on a built-in agent", () => {
+    const raw = JSON.stringify({
+      agents: { tester: { globs: ["**/*.ts"], instructionsFile: "agents/tester.agent.md" } },
+    });
+    expect(() => parseRepoConfig(raw)).toThrow(RepoConfigError);
+    expect(() => parseRepoConfig(raw)).toThrow(/instructionsFile.*not allowed.*built-in/i);
+  });
+
+  it("throws on unknown key in a built-in agent definition", () => {
+    const raw = JSON.stringify({
+      agents: { tester: { globs: ["**/*.ts"], extra: true } },
+    });
+    expect(() => parseRepoConfig(raw)).toThrow(RepoConfigError);
+    expect(() => parseRepoConfig(raw)).toThrow(/extra/);
+  });
+
+  it("throws when replace is not a boolean", () => {
+    const raw = JSON.stringify({
+      agents: { tester: { globs: ["**/*.ts"], replace: "yes" } },
+    });
+    expect(() => parseRepoConfig(raw)).toThrow(RepoConfigError);
+    expect(() => parseRepoConfig(raw)).toThrow(/replace.*boolean/i);
+  });
+
+  it("throws on empty globs for a built-in agent", () => {
+    const raw = JSON.stringify({ agents: { tester: { globs: [] } } });
+    expect(() => parseRepoConfig(raw)).toThrow(/must not be empty/i);
+  });
+
+  it("throws on missing globs for a built-in agent", () => {
+    const raw = JSON.stringify({ agents: { tester: {} } });
+    expect(() => parseRepoConfig(raw)).toThrow(/globs/);
+  });
+
+  it("parses all five built-in agent names", () => {
+    const agents = Object.fromEntries(
+      ["clean-coder", "tester", "architect", "ddd-reviewer", "performance"].map((name) => [
+        name,
+        { globs: ["**/*.ts"] },
+      ])
+    );
+    const result = parseRepoConfig(JSON.stringify({ agents }));
+    expect(Object.keys(result?.agents ?? {})).toHaveLength(5);
+  });
+});
+
+describe("parseRepoConfig — agents section (custom agents)", () => {
   it("parses a valid custom agent", () => {
     const raw = JSON.stringify({
       agents: {
@@ -222,11 +206,9 @@ describe("parseRepoConfig — agents section", () => {
       },
     });
     const result = parseRepoConfig(raw);
-    expect(result?.agents).toEqual({
-      security: {
-        globs: ["**/*.java", "**/*.ts"],
-        instructionsFile: "agents/security.agent.md",
-      },
+    expect(result?.agents?.security).toEqual({
+      globs: ["**/*.java", "**/*.ts"],
+      instructionsFile: "agents/security.agent.md",
     });
   });
 
@@ -238,18 +220,16 @@ describe("parseRepoConfig — agents section", () => {
     expect(result?.agents?.security?.instructionsFile).toBe("agents/security.agent.md");
   });
 
-  it("throws when instructionsFile is missing (required)", () => {
+  it("throws when instructionsFile is missing for a custom agent", () => {
     const raw = JSON.stringify({ agents: { security: { globs: ["**/*.ts"] } } });
     expect(() => parseRepoConfig(raw)).toThrow(RepoConfigError);
     expect(() => parseRepoConfig(raw)).toThrow(/instructionsFile/);
   });
 
-  it("throws when a custom agent name collides with a built-in agent", () => {
-    const raw = JSON.stringify({
-      agents: { tester: { globs: ["**/*.ts"], instructionsFile: "agents/tester.agent.md" } },
-    });
+  it("throws when instructionsFile is an empty string", () => {
+    const raw = JSON.stringify({ agents: { security: { globs: ["**/*.ts"], instructionsFile: "  " } } });
     expect(() => parseRepoConfig(raw)).toThrow(RepoConfigError);
-    expect(() => parseRepoConfig(raw)).toThrow(/built-in/);
+    expect(() => parseRepoConfig(raw)).toThrow(/instructionsFile/);
   });
 
   it("throws on an invalid custom agent name", () => {
@@ -260,14 +240,14 @@ describe("parseRepoConfig — agents section", () => {
     expect(() => parseRepoConfig(raw)).toThrow(/invalid custom agent name/i);
   });
 
-  it("throws on empty globs", () => {
+  it("throws on empty globs for a custom agent", () => {
     const raw = JSON.stringify({
       agents: { security: { globs: [], instructionsFile: "agents/security.agent.md" } },
     });
     expect(() => parseRepoConfig(raw)).toThrow(/must not be empty/i);
   });
 
-  it("throws on missing globs", () => {
+  it("throws on missing globs for a custom agent", () => {
     const raw = JSON.stringify({
       agents: { security: { instructionsFile: "agents/security.agent.md" } },
     });
@@ -287,11 +267,26 @@ describe("parseRepoConfig — agents section", () => {
   it("throws when the agents section is not an object", () => {
     expect(() => parseRepoConfig(JSON.stringify({ agents: [] }))).toThrow(/"agents" must be an object/);
   });
+
+  it("allows mixed built-in and custom agents in the same config", () => {
+    const raw = JSON.stringify({
+      agents: {
+        tester: { globs: ["**/*.spec.ts"] },
+        security: { globs: ["**/*.java"], instructionsFile: "agents/security.agent.md" },
+      },
+    });
+    const result = parseRepoConfig(raw);
+    expect(result?.agents?.tester).toEqual({ globs: ["**/*.spec.ts"] });
+    expect(result?.agents?.security).toEqual({
+      globs: ["**/*.java"],
+      instructionsFile: "agents/security.agent.md",
+    });
+  });
 });
 
 describe("parseRepoConfig — exclude section", () => {
   it("returns null exclude when section is absent", () => {
-    const result = parseRepoConfig(JSON.stringify({ routing: {} }));
+    const result = parseRepoConfig(JSON.stringify({}));
     expect(result?.exclude).toBeNull();
   });
 
@@ -325,25 +320,38 @@ describe("parseRepoConfig — exclude section", () => {
   });
 });
 
-describe("customAgentsToRoutingOverride", () => {
-  it("returns null when there are no custom agents", () => {
-    expect(customAgentsToRoutingOverride(null)).toBeNull();
+describe("agentsToRoutingOverride", () => {
+  it("returns null when agents is null", () => {
+    expect(agentsToRoutingOverride(null)).toBeNull();
   });
 
-  it("projects custom agent globs onto an agentGlobs override", () => {
-    const override = customAgentsToRoutingOverride({
+  it("projects custom agent globs onto an agentGlobs override (extend mode)", () => {
+    const override = agentsToRoutingOverride({
       security: { globs: ["**/*.ts"], instructionsFile: "agents/security.agent.md" },
     });
-    expect(override).toEqual({ agentGlobs: { security: ["**/*.ts"] } });
+    expect(override).toEqual({ agentGlobs: { security: { globs: ["**/*.ts"], replace: false } } });
   });
 
-  it("merges into a routing config as a brand-new agent entry", () => {
-    const override = customAgentsToRoutingOverride({
+  it("projects built-in override with replace: true", () => {
+    const override = agentsToRoutingOverride({
+      tester: { globs: ["**/*.spec.ts"], replace: true },
+    });
+    expect(override).toEqual({ agentGlobs: { tester: { globs: ["**/*.spec.ts"], replace: true } } });
+  });
+
+  it("defaults replace to false when not set", () => {
+    const override = agentsToRoutingOverride({
+      tester: { globs: ["**/*.spec.ts"] },
+    });
+    expect(override?.agentGlobs?.tester.replace).toBe(false);
+  });
+
+  it("merges a custom agent into routing config as a brand-new agent entry", () => {
+    const override = agentsToRoutingOverride({
       security: { globs: ["**/*.ts"], instructionsFile: "agents/security.agent.md" },
     });
     const result = mergeRoutingConfig(defaultRoutingConfig, override);
     expect(result.agentGlobs["security"]).toEqual(["**/*.ts"]);
-    // Built-in agents remain intact.
     expect(result.agentGlobs["tester"]).toEqual(defaultRoutingConfig.agentGlobs["tester"]);
   });
 });
@@ -359,49 +367,60 @@ describe("mergeRoutingConfig", () => {
     expect(result).toBe(defaultRoutingConfig);
   });
 
-  it("extends globs for the overridden agent", () => {
+  it("extends globs for the overridden agent (replace: false)", () => {
     const override = {
       agentGlobs: {
-        "ddd-reviewer": ["**/internal/core/**/*.java"],
+        "ddd-reviewer": { globs: ["**/internal/core/**/*.java"], replace: false },
       },
     };
     const result = mergeRoutingConfig(defaultRoutingConfig, override);
     const dddGlobs = result.agentGlobs["ddd-reviewer"];
-    // Contains all original default globs
     for (const g of defaultRoutingConfig.agentGlobs["ddd-reviewer"]) {
       expect(dddGlobs).toContain(g);
     }
-    // Also contains the new glob
     expect(dddGlobs).toContain("**/internal/core/**/*.java");
   });
 
-  it("puts default globs before override globs", () => {
+  it("puts default globs before override globs in extend mode", () => {
     const override = {
       agentGlobs: {
-        "ddd-reviewer": ["**/internal/core/**/*.java"],
+        "ddd-reviewer": { globs: ["**/internal/core/**/*.java"], replace: false },
       },
     };
     const result = mergeRoutingConfig(defaultRoutingConfig, override);
     const dddGlobs = result.agentGlobs["ddd-reviewer"];
     const defaultLen = defaultRoutingConfig.agentGlobs["ddd-reviewer"].length;
-    expect(dddGlobs.slice(0, defaultLen)).toEqual(
-      defaultRoutingConfig.agentGlobs["ddd-reviewer"]
-    );
+    expect(dddGlobs.slice(0, defaultLen)).toEqual(defaultRoutingConfig.agentGlobs["ddd-reviewer"]);
     expect(dddGlobs[dddGlobs.length - 1]).toBe("**/internal/core/**/*.java");
   });
 
-  it("deduplicates: does not add glob already present in defaults", () => {
+  it("deduplicates in extend mode: does not add glob already present in defaults", () => {
     const existingGlob = defaultRoutingConfig.agentGlobs["ddd-reviewer"][0];
-    const override = { agentGlobs: { "ddd-reviewer": [existingGlob] } };
+    const override = {
+      agentGlobs: { "ddd-reviewer": { globs: [existingGlob], replace: false } },
+    };
     const result = mergeRoutingConfig(defaultRoutingConfig, override);
     const dddGlobs = result.agentGlobs["ddd-reviewer"];
     const count = dddGlobs.filter((g) => g === existingGlob).length;
     expect(count).toBe(1);
   });
 
+  it("replaces globs entirely when replace: true", () => {
+    const override = {
+      agentGlobs: {
+        tester: { globs: ["legacy/**/*.test.ts"], replace: true },
+      },
+    };
+    const result = mergeRoutingConfig(defaultRoutingConfig, override);
+    expect(result.agentGlobs["tester"]).toEqual(["legacy/**/*.test.ts"]);
+    for (const g of defaultRoutingConfig.agentGlobs["tester"]) {
+      expect(result.agentGlobs["tester"]).not.toContain(g);
+    }
+  });
+
   it("leaves other agents unchanged when only one agent is overridden", () => {
     const override = {
-      agentGlobs: { "ddd-reviewer": ["**/extra/**/*.java"] },
+      agentGlobs: { "ddd-reviewer": { globs: ["**/extra/**/*.java"], replace: false } },
     };
     const result = mergeRoutingConfig(defaultRoutingConfig, override);
     expect(result.agentGlobs["tester"]).toEqual(defaultRoutingConfig.agentGlobs["tester"]);
@@ -413,8 +432,8 @@ describe("mergeRoutingConfig", () => {
   it("can extend multiple agents at once", () => {
     const override = {
       agentGlobs: {
-        "ddd-reviewer": ["**/internal/core/**/*.java"],
-        performance: ["**/infra/cache/**/*.java"],
+        "ddd-reviewer": { globs: ["**/internal/core/**/*.java"], replace: false },
+        performance: { globs: ["**/infra/cache/**/*.java"], replace: false },
       },
     };
     const result = mergeRoutingConfig(defaultRoutingConfig, override);
@@ -422,8 +441,16 @@ describe("mergeRoutingConfig", () => {
     expect(result.agentGlobs["performance"]).toContain("**/infra/cache/**/*.java");
   });
 
+  it("adds a brand-new agent (custom) as a fresh entry", () => {
+    const override = {
+      agentGlobs: { security: { globs: ["**/*.java"], replace: false } },
+    };
+    const result = mergeRoutingConfig(defaultRoutingConfig, override);
+    expect(result.agentGlobs["security"]).toEqual(["**/*.java"]);
+  });
+
   it("preserves unmatchedFilesPolicy from base", () => {
-    const override = { agentGlobs: { tester: ["**/*.spec.ts"] } };
+    const override = { agentGlobs: { tester: { globs: ["**/*.spec.ts"], replace: false } } };
     const result = mergeRoutingConfig(defaultRoutingConfig, override);
     expect(result.unmatchedFilesPolicy).toBe(defaultRoutingConfig.unmatchedFilesPolicy);
   });

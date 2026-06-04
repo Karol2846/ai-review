@@ -29,11 +29,11 @@ import {
   type UserModelConfigOverride,
 } from "./installProviderConfig";
 import {createLanguageModel} from "./llmClient";
-import {parseRepoConfig, mergeRoutingConfig, customAgentsToRoutingOverride, RepoConfigError, REPO_CONFIG_FILE_NAME} from "./repoConfig";
+import {parseRepoConfig, mergeRoutingConfig, agentsToRoutingOverride, RepoConfigError, REPO_CONFIG_FILE_NAME} from "./repoConfig";
 import {renderReport} from "./reporter";
 import {runReviewPipeline, type RunReviewPipelineInput, type RunReviewPipelineResult} from "./reviewPipeline";
 import type {AgentInstructionsByAgent, RunnerRetryConfig} from "./runner";
-import type {CustomAgentsMap, RoutingRuntimeConfig} from "./routingTypes";
+import type {AgentsMap, RoutingRuntimeConfig} from "./routingTypes";
 
 const DEFAULT_MAX_CHAR_LIMIT = 14_000;
 const DEFAULT_RETRY: RunnerRetryConfig = {
@@ -380,23 +380,27 @@ export async function runCli(
 
     let routingConfig: RoutingRuntimeConfig;
     let modelOverride: UserModelConfigOverride | null = null;
-    let customAgents: CustomAgentsMap | null = null;
+    let agentsMap: AgentsMap | null = null;
     let configExclude: readonly string[] | null = null;
     try {
       const repoConfigRaw = deps.readRepoConfigFile(repoRootPath);
       const repoConfigOverride = parseRepoConfig(repoConfigRaw);
-      routingConfig = mergeRoutingConfig(defaultRoutingConfig, repoConfigOverride?.routing ?? null);
-      customAgents = repoConfigOverride?.agents ?? null;
-      // Fold custom agents' globs into the routing config so the pipeline routes files to them.
-      routingConfig = mergeRoutingConfig(routingConfig, customAgentsToRoutingOverride(customAgents));
+      agentsMap = repoConfigOverride?.agents ?? null;
+      // Fold all agents (built-in overrides + customs) into routing config.
+      routingConfig = mergeRoutingConfig(defaultRoutingConfig, agentsToRoutingOverride(agentsMap));
       modelOverride = repoConfigOverride?.model ?? null;
       configExclude = repoConfigOverride?.exclude ?? null;
       if (options.debug && repoConfigOverride !== null) {
-        const extendedAgents = Object.keys(repoConfigOverride.routing?.agentGlobs ?? {});
+        const builtInOverrides = agentsMap
+          ? Object.entries(agentsMap).filter(([, d]) => d.instructionsFile === undefined).map(([n]) => n)
+          : [];
+        const customAgentNames = agentsMap
+          ? Object.entries(agentsMap).filter(([, d]) => d.instructionsFile !== undefined).map(([n]) => n)
+          : [];
         const modelKeys = modelOverride ? Object.keys(modelOverride) : [];
-        const customAgentNames = customAgents ? Object.keys(customAgents) : [];
         deps.writeStderr(
-          `DEBUG: loaded ${REPO_CONFIG_FILE_NAME} — extended routing for: ${extendedAgents.join(", ") || "none"}` +
+          `DEBUG: loaded ${REPO_CONFIG_FILE_NAME}` +
+            (builtInOverrides.length > 0 ? ` — built-in overrides: ${builtInOverrides.join(", ")}` : "") +
             (customAgentNames.length > 0 ? `; custom agents: ${customAgentNames.join(", ")}` : "") +
             (modelKeys.length > 0 ? `; model override: ${modelKeys.join(", ")}` : "") +
             (configExclude ? `; exclude globs: ${configExclude.length}` : "")
@@ -449,10 +453,13 @@ export async function runCli(
       return 0;
     }
 
+    // Custom agents declare an explicit instructionsFile; build overrides map for those only.
     const instructionFileOverrides: Record<string, string> = {};
-    if (customAgents !== null) {
-      for (const [name, definition] of Object.entries(customAgents)) {
-        instructionFileOverrides[name] = definition.instructionsFile;
+    if (agentsMap !== null) {
+      for (const [name, definition] of Object.entries(agentsMap)) {
+        if (definition.instructionsFile !== undefined) {
+          instructionFileOverrides[name] = definition.instructionsFile;
+        }
       }
     }
 
@@ -463,17 +470,18 @@ export async function runCli(
     );
     debugWarnings.push(...instructionsResult.warnings);
 
-    // Fail-fast: a selected custom agent without a loadable instruction is a configuration error.
-    if (customAgents !== null) {
+    // Fail-fast: a selected custom agent (one with instructionsFile) without loadable instructions
+    // is a configuration error.
+    if (agentsMap !== null) {
       const instructions = instructionsResult.instructions;
-      const hasInstruction = (agent: string): boolean =>
-        instructions instanceof Map ? instructions.has(agent) : Object.hasOwn(instructions, agent);
-      const missingCustomAgents = filteredRoutingConfig.selectedAgents.filter(
-        (agent) => Object.hasOwn(customAgents as CustomAgentsMap, agent) && !hasInstruction(agent)
-      );
+      const hasInstruction = (agent: string): boolean => Object.hasOwn(instructions, agent);
+      const missingCustomAgents = filteredRoutingConfig.selectedAgents.filter((agent) => {
+        const def = (agentsMap as AgentsMap)[agent];
+        return def?.instructionsFile !== undefined && !hasInstruction(agent);
+      });
       if (missingCustomAgents.length > 0) {
         const details = missingCustomAgents
-          .map((agent) => `"${agent}" (${(customAgents as CustomAgentsMap)[agent]?.instructionsFile})`)
+          .map((agent) => `"${agent}" (${(agentsMap as AgentsMap)[agent]?.instructionsFile})`)
           .join(", ");
         deps.writeStderr(
           `Error: ${REPO_CONFIG_FILE_NAME}: could not load instructions for custom agent(s): ${details}.`

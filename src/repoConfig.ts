@@ -5,30 +5,29 @@ import {
 } from "./installProviderConfig";
 import {
   AGENT_NAMES,
+  type AgentDefinition,
+  type AgentsMap,
+  type AgentGlobsEntry,
   type AgentGlobsMap,
-  type CustomAgentDefinition,
-  type CustomAgentsMap,
   type RoutingRuntimeConfig,
   type UserRoutingConfigOverride,
 } from "./routingTypes";
 
 export const REPO_CONFIG_FILE_NAME = "ai-review.json";
 
-const ALLOWED_ROOT_KEYS = ["routing", "model", "agents", "exclude"] as const;
-const ALLOWED_ROUTING_KEYS = ["agentGlobs"] as const;
-const ALLOWED_MODEL_KEYS = ["provider", "model", "apiKeyEnv", "baseURL"] as const;
+const ALLOWED_ROOT_KEYS = ["model", "agents", "exclude"] as const;
+const ALLOWED_BUILTIN_AGENT_KEYS = ["globs", "replace"] as const;
 const ALLOWED_CUSTOM_AGENT_KEYS = ["globs", "instructionsFile"] as const;
-const ALLOWED_AGENT_NAMES = new Set<string>(AGENT_NAMES);
+const ALLOWED_MODEL_KEYS = ["provider", "model", "apiKeyEnv", "baseURL"] as const;
+const BUILTIN_AGENT_NAMES = new Set<string>(AGENT_NAMES);
 const CUSTOM_AGENT_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/iu;
 
 /**
  * Parsed `ai-review.json`. Each section is `null` when absent from the file.
  */
 export interface RepoConfigOverride {
-  readonly routing: UserRoutingConfigOverride | null;
   readonly model: UserModelConfigOverride | null;
-  readonly agents: CustomAgentsMap | null;
-  /** Glob patterns whose matching files are dropped before routing (no agent reviews them). */
+  readonly agents: AgentsMap | null;
   readonly exclude: readonly string[] | null;
 }
 
@@ -42,7 +41,7 @@ export class RepoConfigError extends Error {
 /**
  * Parses and validates raw JSON content of `ai-review.json`.
  * Returns `null` when `raw` is `null` (file absent). When the file is present, returns a
- * `RepoConfigOverride` whose `routing`/`model` sections are `null` if absent from the file.
+ * `RepoConfigOverride` whose sections are `null` if absent from the file.
  * Throws `RepoConfigError` on any validation violation.
  */
 export function parseRepoConfig(raw: string | null): RepoConfigOverride | null {
@@ -62,6 +61,15 @@ export function parseRepoConfig(raw: string | null): RepoConfigOverride | null {
   }
 
   const root = parsed as Record<string, unknown>;
+
+  // Migration hint for the removed `routing` section (v1 → v2).
+  if ("routing" in root) {
+    throw new RepoConfigError(
+      `${REPO_CONFIG_FILE_NAME}: "routing" was removed in v2. ` +
+        `Move "routing.agentGlobs.<name>" to "agents.<name>.globs" instead.`
+    );
+  }
+
   const unknownRootKeys = Object.keys(root).filter(
     (k) => !(ALLOWED_ROOT_KEYS as readonly string[]).includes(k)
   );
@@ -73,27 +81,17 @@ export function parseRepoConfig(raw: string | null): RepoConfigOverride | null {
   }
 
   return {
-    routing: parseRoutingSection(root["routing"]),
     model: parseModelSection(root["model"]),
     agents: parseAgentsSection(root["agents"]),
     exclude: parseExcludeSection(root["exclude"]),
   };
 }
 
-/**
- * Parses and validates the `exclude` section — a flat array of glob patterns whose matching files
- * are dropped before routing. Returns `null` when absent. An empty array hard-fails (via
- * `validateGlobsArray`), consistent with the other glob arrays.
- */
 function parseExcludeSection(exclude: unknown): readonly string[] | null {
   if (exclude === undefined) return null;
   return validateGlobsArray(exclude, "exclude");
 }
 
-/**
- * Validates a value as a non-empty array of non-empty string globs.
- * `label` is the dotted config path used in error messages (e.g. `routing.agentGlobs.tester`).
- */
 function validateGlobsArray(value: unknown, label: string): readonly string[] {
   if (!Array.isArray(value)) {
     throw new RepoConfigError(
@@ -116,57 +114,18 @@ function validateGlobsArray(value: unknown, label: string): readonly string[] {
   return value as readonly string[];
 }
 
-function parseRoutingSection(routing: unknown): UserRoutingConfigOverride | null {
-  if (routing === undefined) return null;
-
-  if (typeof routing !== "object" || routing === null || Array.isArray(routing)) {
-    throw new RepoConfigError(`${REPO_CONFIG_FILE_NAME}: "routing" must be an object.`);
-  }
-
-  const routingObj = routing as Record<string, unknown>;
-  const unknownRoutingKeys = Object.keys(routingObj).filter(
-    (k) => !(ALLOWED_ROUTING_KEYS as readonly string[]).includes(k)
-  );
-  if (unknownRoutingKeys.length > 0) {
-    throw new RepoConfigError(
-      `${REPO_CONFIG_FILE_NAME}: unknown key(s) in "routing": "${unknownRoutingKeys.join('", "')}". ` +
-        `Allowed: ${ALLOWED_ROUTING_KEYS.join(", ")}.`
-    );
-  }
-
-  const agentGlobs = routingObj["agentGlobs"];
-  if (agentGlobs === undefined) return {};
-
-  if (typeof agentGlobs !== "object" || agentGlobs === null || Array.isArray(agentGlobs)) {
-    throw new RepoConfigError(
-      `${REPO_CONFIG_FILE_NAME}: "routing.agentGlobs" must be an object.`
-    );
-  }
-
-  const agentGlobsObj = agentGlobs as Record<string, unknown>;
-  const result: Record<string, readonly string[]> = {};
-
-  for (const [agentName, globs] of Object.entries(agentGlobsObj)) {
-    if (!ALLOWED_AGENT_NAMES.has(agentName)) {
-      throw new RepoConfigError(
-        `${REPO_CONFIG_FILE_NAME}: unknown agent "${agentName}" in "routing.agentGlobs". ` +
-          `Allowed agents: ${AGENT_NAMES.join(", ")}. ` +
-          `Define new agents under the top-level "agents" section.`
-      );
-    }
-
-    result[agentName] = validateGlobsArray(globs, `routing.agentGlobs.${agentName}`);
-  }
-
-  return { agentGlobs: result };
-}
-
 /**
- * Parses and validates the `agents` section — per-repo custom agents.
- * Returns `null` when absent. Each agent requires a non-empty `globs` array and an `instructionsFile`
- * path; the name must be filename-safe and must not collide with a built-in agent.
+ * Parses the `agents` section — unified built-in overrides and custom agents.
+ *
+ * Built-in agent (name in AGENT_NAMES):
+ *   - `globs` (required), `replace?: boolean` (default false = extend)
+ *   - `instructionsFile` is forbidden (built-ins load from the agents/ directory)
+ *
+ * Custom agent (any other name):
+ *   - `globs` (required), `instructionsFile` (required)
+ *   - `replace` is forbidden
  */
-function parseAgentsSection(agents: unknown): CustomAgentsMap | null {
+function parseAgentsSection(agents: unknown): AgentsMap | null {
   if (agents === undefined) return null;
 
   if (typeof agents !== "object" || agents === null || Array.isArray(agents)) {
@@ -174,66 +133,100 @@ function parseAgentsSection(agents: unknown): CustomAgentsMap | null {
   }
 
   const agentsObj = agents as Record<string, unknown>;
-  const result: Record<string, CustomAgentDefinition> = {};
+  const result: Record<string, AgentDefinition> = {};
 
   for (const [agentName, definition] of Object.entries(agentsObj)) {
-    if (ALLOWED_AGENT_NAMES.has(agentName)) {
-      throw new RepoConfigError(
-        `${REPO_CONFIG_FILE_NAME}: "agents.${agentName}" collides with a built-in agent. ` +
-          `Use "routing.agentGlobs" to extend a built-in agent.`
-      );
-    }
-
-    if (!CUSTOM_AGENT_NAME_PATTERN.test(agentName)) {
-      throw new RepoConfigError(
-        `${REPO_CONFIG_FILE_NAME}: invalid custom agent name "${agentName}". ` +
-          `Names must match ${CUSTOM_AGENT_NAME_PATTERN.source}.`
-      );
-    }
-
     if (typeof definition !== "object" || definition === null || Array.isArray(definition)) {
       throw new RepoConfigError(
         `${REPO_CONFIG_FILE_NAME}: "agents.${agentName}" must be an object.`
       );
     }
 
-    const definitionObj = definition as Record<string, unknown>;
-    const unknownKeys = Object.keys(definitionObj).filter(
-      (k) => !(ALLOWED_CUSTOM_AGENT_KEYS as readonly string[]).includes(k)
-    );
-    if (unknownKeys.length > 0) {
-      throw new RepoConfigError(
-        `${REPO_CONFIG_FILE_NAME}: unknown key(s) in "agents.${agentName}": "${unknownKeys.join('", "')}". ` +
-          `Allowed: ${ALLOWED_CUSTOM_AGENT_KEYS.join(", ")}.`
-      );
+    const defObj = definition as Record<string, unknown>;
+
+    if (BUILTIN_AGENT_NAMES.has(agentName)) {
+      result[agentName] = parseBuiltinAgentEntry(agentName, defObj);
+    } else {
+      if (!CUSTOM_AGENT_NAME_PATTERN.test(agentName)) {
+        throw new RepoConfigError(
+          `${REPO_CONFIG_FILE_NAME}: invalid custom agent name "${agentName}". ` +
+            `Names must match ${CUSTOM_AGENT_NAME_PATTERN.source}.`
+        );
+      }
+      result[agentName] = parseCustomAgentEntry(agentName, defObj);
     }
-
-    const globs = validateGlobsArray(definitionObj["globs"], `agents.${agentName}.globs`);
-
-    const instructionsFile = definitionObj["instructionsFile"];
-    if (typeof instructionsFile !== "string" || instructionsFile.trim().length === 0) {
-      throw new RepoConfigError(
-        `${REPO_CONFIG_FILE_NAME}: "agents.${agentName}.instructionsFile" is required and must be a non-empty string.`
-      );
-    }
-
-    result[agentName] = { globs, instructionsFile: instructionsFile.trim() };
   }
 
   return result;
 }
 
+function parseBuiltinAgentEntry(
+  agentName: string,
+  defObj: Record<string, unknown>
+): AgentDefinition {
+  const unknownKeys = Object.keys(defObj).filter(
+    (k) => !(ALLOWED_BUILTIN_AGENT_KEYS as readonly string[]).includes(k)
+  );
+  if (unknownKeys.length > 0) {
+    if (unknownKeys.includes("instructionsFile")) {
+      throw new RepoConfigError(
+        `${REPO_CONFIG_FILE_NAME}: "agents.${agentName}.instructionsFile" is not allowed for ` +
+          `built-in agents. Built-in instructions are loaded from the agents/ directory.`
+      );
+    }
+    throw new RepoConfigError(
+      `${REPO_CONFIG_FILE_NAME}: unknown key(s) in "agents.${agentName}": "${unknownKeys.join('", "')}". ` +
+        `Allowed: ${ALLOWED_BUILTIN_AGENT_KEYS.join(", ")}.`
+    );
+  }
+
+  const globs = validateGlobsArray(defObj["globs"], `agents.${agentName}.globs`);
+
+  const replace = defObj["replace"];
+  if (replace !== undefined && typeof replace !== "boolean") {
+    throw new RepoConfigError(
+      `${REPO_CONFIG_FILE_NAME}: "agents.${agentName}.replace" must be a boolean.`
+    );
+  }
+
+  return { globs, ...(replace === true ? { replace: true } : {}) };
+}
+
+function parseCustomAgentEntry(
+  agentName: string,
+  defObj: Record<string, unknown>
+): AgentDefinition {
+  const unknownKeys = Object.keys(defObj).filter(
+    (k) => !(ALLOWED_CUSTOM_AGENT_KEYS as readonly string[]).includes(k)
+  );
+  if (unknownKeys.length > 0) {
+    throw new RepoConfigError(
+      `${REPO_CONFIG_FILE_NAME}: unknown key(s) in "agents.${agentName}": "${unknownKeys.join('", "')}". ` +
+        `Allowed: ${ALLOWED_CUSTOM_AGENT_KEYS.join(", ")}.`
+    );
+  }
+
+  const globs = validateGlobsArray(defObj["globs"], `agents.${agentName}.globs`);
+
+  const instructionsFile = defObj["instructionsFile"];
+  if (typeof instructionsFile !== "string" || instructionsFile.trim().length === 0) {
+    throw new RepoConfigError(
+      `${REPO_CONFIG_FILE_NAME}: "agents.${agentName}.instructionsFile" is required and must be a non-empty string.`
+    );
+  }
+
+  return { globs, instructionsFile: instructionsFile.trim() };
+}
+
 /**
- * Projects the custom-agent definitions onto a routing override so their globs can be folded into the
- * runtime routing config via `mergeRoutingConfig` (custom names have no base entry, so "extend" sets them).
+ * Projects an `AgentsMap` onto a routing override so all agent globs (built-in extends/replaces
+ * and custom agent globs) can be folded into the runtime routing config via `mergeRoutingConfig`.
  */
-export function customAgentsToRoutingOverride(
-  agents: CustomAgentsMap | null
-): UserRoutingConfigOverride | null {
+export function agentsToRoutingOverride(agents: AgentsMap | null): UserRoutingConfigOverride | null {
   if (agents === null) return null;
-  const agentGlobs: Record<string, readonly string[]> = {};
+  const agentGlobs: Record<string, AgentGlobsEntry> = {};
   for (const [name, definition] of Object.entries(agents)) {
-    agentGlobs[name] = definition.globs;
+    agentGlobs[name] = { globs: definition.globs, replace: definition.replace ?? false };
   }
   return { agentGlobs };
 }
@@ -299,7 +292,8 @@ function parseModelSection(model: unknown): UserModelConfigOverride | null {
 
 /**
  * Merges a per-repo routing override into the base config.
- * Semantics: extend — override globs are appended to the base globs for each agent, with dedup.
+ * - Default (replace: false): override globs are appended to base globs (extend + dedup).
+ * - replace: true: override globs fully replace the base globs for that agent.
  * Agents not mentioned in the override are unchanged.
  */
 export function mergeRoutingConfig(
@@ -312,17 +306,21 @@ export function mergeRoutingConfig(
 
   const mergedGlobs: AgentGlobsMap = { ...base.agentGlobs };
 
-  for (const [agent, extraGlobs] of Object.entries(override.agentGlobs)) {
-    if (extraGlobs === undefined) continue;
-    const existing = mergedGlobs[agent] ?? [];
-    const existingSet = new Set(existing);
-    const deduped = [...existing];
-    for (const glob of extraGlobs) {
-      if (!existingSet.has(glob)) {
-        deduped.push(glob);
+  for (const [agent, entry] of Object.entries(override.agentGlobs)) {
+    if (entry === undefined) continue;
+    if (entry.replace) {
+      mergedGlobs[agent] = entry.globs;
+    } else {
+      const existing = mergedGlobs[agent] ?? [];
+      const existingSet = new Set(existing);
+      const deduped = [...existing];
+      for (const glob of entry.globs) {
+        if (!existingSet.has(glob)) {
+          deduped.push(glob);
+        }
       }
+      mergedGlobs[agent] = deduped;
     }
-    mergedGlobs[agent] = deduped;
   }
 
   return { ...base, agentGlobs: mergedGlobs };
