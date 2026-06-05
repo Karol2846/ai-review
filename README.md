@@ -151,16 +151,17 @@ Comment syntax per file type:
 ## Options
 
 ```
--h, --help         Show usage
---base <branch>    Base branch for diff (default: auto-detect)
---agents <list>    Comma-separated agent list (default: all)
---severity <min>   Minimum severity: critical, warning, info (default: info)
---exclude <list>   Comma-separated glob patterns to exclude from review
---report           Print terminal report (annotations are default)
---clean            Remove previous [ai-review] TODO comments
---json             Output raw JSON findings
---parallel <n>     Max parallel agent invocations (default: 5)
---debug            Show raw agent output and timings for debugging
+-h, --help              Show usage
+--base <branch>         Base branch for diff (default: auto-detect)
+--agents <list>         Comma-separated agent list (default: all)
+--exclude-agents <list> Comma-separated agents to skip (default: none)
+--severity <min>        Minimum severity: critical, warning, info (default: info)
+--exclude <list>        Comma-separated glob patterns to exclude from review
+--report                Print terminal report (annotations are default)
+--clean                 Remove previous [ai-review] TODO comments
+--json                  Output raw JSON findings
+--parallel <n>          Max parallel agent invocations (default: 5)
+--debug                 Show raw agent output and timings for debugging
 ```
 
 ---
@@ -184,8 +185,9 @@ ai-review --base main
 
 ### Focus on a specific lens
 ```bash
-ai-review --agents "architect"                       # only architecture issues
-ai-review --exclude "**/*.generated.ts,vendor/**"    # skip generated/vendored files
+ai-review --agents "architect"                           # only architecture issues
+ai-review --exclude "**/*.generated.ts,vendor/**"        # skip generated/vendored files
+ai-review --exclude-agents "ddd-reviewer,performance"    # run all except these agents
 ```
 
 ### Debug when something seems wrong
@@ -304,6 +306,20 @@ Add an `exclude` array of glob patterns to drop matching files **before routing*
 ```
 
 The `--exclude` CLI flag (comma-separated globs) adds to this list: the effective set is the **union** of `ai-review.json` and `--exclude`, deduplicated.
+
+### Excluding agents
+
+Add an `excludeAgents` array to permanently disable specific agents for this repo. Useful when a repo doesn't follow DDD, has no tests yet, etc.:
+
+```json
+{
+  "excludeAgents": ["ddd-reviewer", "performance"]
+}
+```
+
+The `--exclude-agents <list>` CLI flag (comma-separated agent names) adds to this: the effective set is the **union** of `ai-review.json`'s `excludeAgents` and `--exclude-agents`, deduplicated.
+
+> **Note:** `--agents` and `--exclude-agents` cannot be used together. If `--agents` explicitly names an agent that is excluded in `ai-review.json`, the CLI errors out with a clear message.
 
 Unknown keys or agent names cause a hard-fail with a clear error message. If the file is absent, defaults apply unchanged.
 

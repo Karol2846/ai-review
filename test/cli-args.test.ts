@@ -91,6 +91,26 @@ describe("parseCliArgs", () => {
     expectCliArgsError(["--agents", " ,  , "], /"--agents" must include at least one non-empty value/u);
   });
 
+  it("parses --exclude-agents as a CSV list", () => {
+    const result = parseCliArgs(["--exclude-agents", "tester, ddd-reviewer"]);
+    expect(result.excludeAgents).toEqual(["tester", "ddd-reviewer"]);
+    expect(result.agents).toBeUndefined();
+  });
+
+  it("throws CliArgsError when --agents and --exclude-agents are both provided", () => {
+    expectCliArgsError(
+      ["--agents", "tester", "--exclude-agents", "performance"],
+      /Use --agents or --exclude-agents, not both/u
+    );
+  });
+
+  it("throws for empty or whitespace --exclude-agents list", () => {
+    expectCliArgsError(
+      ["--exclude-agents", " ,  , "],
+      /"--exclude-agents" must include at least one non-empty value/u
+    );
+  });
+
   it("throws for unknown flag", () => {
     expectCliArgsError(["--unknown-flag"], /unknown/iu);
   });

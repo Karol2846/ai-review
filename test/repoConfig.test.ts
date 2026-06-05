@@ -14,7 +14,7 @@ describe("parseRepoConfig", () => {
   });
 
   it("returns null sections when file is an empty object", () => {
-    expect(parseRepoConfig("{}")).toEqual({ model: null, agents: null, exclude: null });
+    expect(parseRepoConfig("{}")).toEqual({ model: null, agents: null, exclude: null, excludeAgents: null });
   });
 
   it("throws RepoConfigError on invalid JSON", () => {
@@ -283,6 +283,73 @@ describe("parseRepoConfig — exclude section", () => {
     const raw = JSON.stringify({ exclude: "**/*.ts" });
     expect(() => parseRepoConfig(raw)).toThrow(RepoConfigError);
     expect(() => parseRepoConfig(raw)).toThrow(/array/i);
+  });
+});
+
+describe("parseRepoConfig — excludeAgents section", () => {
+  it("returns null excludeAgents when section is absent", () => {
+    const result = parseRepoConfig(JSON.stringify({}));
+    expect(result?.excludeAgents).toBeNull();
+  });
+
+  it("parses a valid array of built-in agent names", () => {
+    const raw = JSON.stringify({ excludeAgents: ["ddd-reviewer", "performance"] });
+    const result = parseRepoConfig(raw);
+    expect(result?.excludeAgents).toEqual(["ddd-reviewer", "performance"]);
+  });
+
+  it("parses an array that includes a defined custom agent", () => {
+    const raw = JSON.stringify({
+      agents: { security: { globs: ["**/*.java"], instructionsFile: "agents/security.agent.md" } },
+      excludeAgents: ["security"],
+    });
+    const result = parseRepoConfig(raw);
+    expect(result?.excludeAgents).toEqual(["security"]);
+  });
+
+  it("deduplicates repeated entries", () => {
+    const raw = JSON.stringify({ excludeAgents: ["tester", "tester", "architect"] });
+    const result = parseRepoConfig(raw);
+    expect(result?.excludeAgents).toEqual(["tester", "architect"]);
+  });
+
+  it("throws RepoConfigError on an empty excludeAgents array", () => {
+    const raw = JSON.stringify({ excludeAgents: [] });
+    expect(() => parseRepoConfig(raw)).toThrow(RepoConfigError);
+    expect(() => parseRepoConfig(raw)).toThrow(/must not be empty/i);
+  });
+
+  it("throws RepoConfigError when excludeAgents is not an array", () => {
+    const raw = JSON.stringify({ excludeAgents: "tester" });
+    expect(() => parseRepoConfig(raw)).toThrow(RepoConfigError);
+    expect(() => parseRepoConfig(raw)).toThrow(/array/i);
+  });
+
+  it("throws RepoConfigError when an entry is not a string", () => {
+    const raw = JSON.stringify({ excludeAgents: ["tester", 42] });
+    expect(() => parseRepoConfig(raw)).toThrow(RepoConfigError);
+    expect(() => parseRepoConfig(raw)).toThrow(/non-empty string/i);
+  });
+
+  it("throws RepoConfigError on a whitespace-only entry", () => {
+    const raw = JSON.stringify({ excludeAgents: ["  "] });
+    expect(() => parseRepoConfig(raw)).toThrow(RepoConfigError);
+  });
+
+  it("throws RepoConfigError on an unknown agent name", () => {
+    const raw = JSON.stringify({ excludeAgents: ["nope"] });
+    expect(() => parseRepoConfig(raw)).toThrow(RepoConfigError);
+    expect(() => parseRepoConfig(raw)).toThrow(/unknown agent name/i);
+    expect(() => parseRepoConfig(raw)).toThrow(/nope/);
+  });
+
+  it("includes built-in and defined custom names in the allowed set reported in the error", () => {
+    const raw = JSON.stringify({
+      agents: { security: { globs: ["**/*.java"], instructionsFile: "agents/security.agent.md" } },
+      excludeAgents: ["nope"],
+    });
+    expect(() => parseRepoConfig(raw)).toThrow(/security/);
+    expect(() => parseRepoConfig(raw)).toThrow(/tester/);
   });
 });
 

@@ -399,6 +399,7 @@ export async function runCli(
     let modelOverride: UserModelConfigOverride | null = null;
     let agentsMap: AgentsMap | null = null;
     let configExclude: readonly string[] | null = null;
+    let configExcludeAgents: readonly string[] | null = null;
     try {
       const repoConfigRaw = deps.readRepoConfigFile(repoRootPath);
       const repoConfigOverride = parseRepoConfig(repoConfigRaw);
@@ -407,6 +408,7 @@ export async function runCli(
       routingConfig = mergeRoutingConfig(defaultRoutingConfig, agentsToRoutingOverride(agentsMap));
       modelOverride = repoConfigOverride?.model ?? null;
       configExclude = repoConfigOverride?.exclude ?? null;
+      configExcludeAgents = repoConfigOverride?.excludeAgents ?? null;
       if (options.debug && repoConfigOverride !== null) {
         const builtInOverrides = agentsMap
           ? Object.entries(agentsMap).filter(([, d]) => !isCustomAgent(d)).map(([n]) => n)
@@ -419,7 +421,8 @@ export async function runCli(
             (builtInOverrides.length > 0 ? ` — built-in overrides: ${builtInOverrides.join(", ")}` : "") +
             (customAgentNames.length > 0 ? `; custom agents: ${customAgentNames.join(", ")}` : "") +
             (modelOverride ? `; model override: ${modelOverride}` : "") +
-            (configExclude ? `; exclude globs: ${configExclude.length}` : "")
+            (configExclude ? `; exclude globs: ${configExclude.length}` : "") +
+            (configExcludeAgents ? `; excluded agents: ${configExcludeAgents.join(", ")}` : "")
         );
       }
     } catch (err) {
@@ -449,8 +452,27 @@ export async function runCli(
       return 0;
     }
 
-    // No `--agents` flag → run every configured agent (built-in + custom).
-    const requestedAgents = options.agents ?? Object.keys(routingConfig.agentGlobs);
+    // Build the effective excluded-agents set: union of config and CLI flag.
+    const excludedAgentSet = new Set([
+      ...(configExcludeAgents ?? []),
+      ...(options.excludeAgents ?? []),
+    ]);
+
+    // Rule 2: --agents explicitly requesting a config-excluded agent is an error.
+    if (options.agents !== undefined && configExcludeAgents !== null) {
+      const conflicting = options.agents.filter((a) => configExcludeAgents.includes(a));
+      if (conflicting.length > 0) {
+        const names = conflicting.map((a) => `"${a}"`).join(", ");
+        deps.writeStderr(
+          `Error: Agent(s) ${names} are excluded by ${REPO_CONFIG_FILE_NAME} and cannot be run.`
+        );
+        return 1;
+      }
+    }
+
+    // No `--agents` flag → run every configured agent minus excluded ones.
+    const requestedAgents =
+      options.agents ?? Object.keys(routingConfig.agentGlobs).filter((a) => !excludedAgentSet.has(a));
     const filteredRoutingConfig = filterRoutingConfigByAgents(
       routingConfig,
       requestedAgents

@@ -22,6 +22,8 @@ export interface CliOptions {
   readonly minSeverity: FindingSeverity;
   /** Glob patterns from `--exclude` used to drop changed files before routing. Omitted when absent. */
   readonly exclude?: readonly string[];
+  /** Agent names from `--exclude-agents` to skip for this run. Omitted when absent. */
+  readonly excludeAgents?: readonly string[];
   readonly maxParallel: number;
 }
 
@@ -101,9 +103,10 @@ export function formatCliUsage(): string {
     "  --base <branch>    Base branch for diff (default: auto-detect)",
     "  --report           Print terminal report (annotations are default)",
     "  --clean            Remove previous [ai-review] TODO comments",
-    "  --agents <list>    Comma-separated agent list (default: all)",
-    "  --severity <min>   Minimum severity: critical, warning, info (default: info)",
-    "  --exclude <list>   Comma-separated glob patterns to exclude from review",
+    "  --agents <list>          Comma-separated agent list (default: all)",
+    "  --exclude-agents <list>  Comma-separated agents to skip (default: none)",
+    "  --severity <min>         Minimum severity: critical, warning, info (default: info)",
+    "  --exclude <list>         Comma-separated glob patterns to exclude from review",
     "  --json             Output raw JSON findings",
     "  --debug            Show raw agent output and timings for debugging",
     "  --parallel <n>     Max parallel agent invocations (default: 5)",
@@ -155,6 +158,7 @@ export function parseCliArgs(argv: readonly string[]): CliOptions {
         force: { type: "boolean" },
         base: { type: "string" },
         agents: { type: "string" },
+        "exclude-agents": { type: "string" },
         severity: { type: "string" },
         exclude: { type: "string" },
         parallel: { type: "string" },
@@ -188,6 +192,17 @@ export function parseCliArgs(argv: readonly string[]): CliOptions {
   const baseBranch = parseOptionalNonEmpty(readOptionalStringValue(parsedValues.base, "--base"), "--base");
   const agentsValue = readOptionalStringValue(parsedValues.agents, "--agents");
   const agents = agentsValue ? parseCsvList(agentsValue, "--agents") : undefined;
+  const excludeAgentsValue = readOptionalStringValue(
+    (parsedValues as Record<string, unknown>)["exclude-agents"] as string | undefined,
+    "--exclude-agents"
+  );
+  const excludeAgents = excludeAgentsValue
+    ? parseCsvList(excludeAgentsValue, "--exclude-agents")
+    : undefined;
+
+  if (agents !== undefined && excludeAgents !== undefined) {
+    throw new CliArgsError("Use --agents or --exclude-agents, not both.");
+  }
   const minSeverity = parseSeverity(readOptionalStringValue(parsedValues.severity, "--severity"));
   const excludeValue = readOptionalStringValue(parsedValues.exclude, "--exclude");
   const exclude = excludeValue ? parseCsvList(excludeValue, "--exclude") : undefined;
@@ -207,6 +222,7 @@ export function parseCliArgs(argv: readonly string[]): CliOptions {
     ...(command !== undefined ? { command } : {}),
     ...(baseBranch !== undefined ? { baseBranch } : {}),
     ...(agents !== undefined ? { agents } : {}),
+    ...(excludeAgents !== undefined ? { excludeAgents } : {}),
     minSeverity,
     ...(exclude !== undefined ? { exclude } : {}),
     maxParallel,

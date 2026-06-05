@@ -11,6 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | Run all tests            | `npm run test`                                                                          |
 | Single-scope test run    | `ai-review --agents "tester" --report`                                                  |
 | Exclude files from review | `ai-review --exclude "**/*.generated.ts,vendor/**"`                                    |
+| Exclude agents from review | `ai-review --exclude-agents "ddd-reviewer,performance"`                               |
 | Install globally         | `npm run build && npm install -g .`                                                     |
 | Run with terminal report | `ai-review --report`                                                                    |
 | Raw JSON output          | `ai-review --json`                                                                      |
@@ -63,7 +64,13 @@ Changed files are matched to agents by glob patterns via `src/router.ts` (`route
   { "exclude": ["**/*.generated.ts", "vendor/**"] }
   ```
 
-When `--agents` is **not** passed, the run includes **every configured agent** (built-in + custom); `--agents <list>` narrows the selection.
+- **`excludeAgents`** (phase 5) — a flat array of agent names (built-in or custom) to permanently disable for this repo. Parsed by `parseExcludeAgentsSection` in `src/repoConfig.ts`; reuses `validateGlobsArray` for the non-empty-array-of-non-empty-strings constraint, then validates each name against the **known set** (built-ins ∪ names from `agents`). Unknown names hard-fail with `RepoConfigError`. Duplicate entries are deduplicated. Applied in `src/cli.ts`: the effective excluded-agents set is the **union** of `ai-review.json`'s `excludeAgents` and the `--exclude-agents` CLI flag (comma-separated, parsed by `parseCsvList`); agents in this set are filtered out of the default run. Two conflict rules: **(1)** `--agents` and `--exclude-agents` are mutually exclusive (CLI error). **(2)** If `--agents` explicitly names an agent that `ai-review.json`'s `excludeAgents` excludes, the CLI exits 1 with a clear message. When exclusion leaves zero agents, the run exits 0 (same branch as no-agents-selected). Example:
+
+  ```json
+  { "excludeAgents": ["ddd-reviewer", "performance"] }
+  ```
+
+When `--agents` is **not** passed, the run includes **every configured agent** (built-in + custom) **minus those in the effective `excludeAgents` set**; `--agents <list>` narrows the selection (whitelist, ignoring exclusions — subject to conflict rule 2 if config also excludes the agent).
 
 ### Agent instructions
 

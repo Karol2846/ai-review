@@ -604,4 +604,86 @@ describe("runCli runtime flow", () => {
       expect.stringContaining("could not load instructions for custom agent")
     );
   });
+
+  // --- excludeAgents ---
+
+  it("omits agents listed in ai-review.json excludeAgents from the default run", async () => {
+    const deps = createRuntimeDeps();
+    deps.readRepoConfigFile.mockReturnValue(
+      JSON.stringify({ excludeAgents: ["ddd-reviewer", "performance"] })
+    );
+
+    const exitCode = await runCli(["--json"], deps.overrides);
+
+    expect(exitCode).toBe(0);
+    const reviewInput = deps.runReviewPipeline.mock.calls[0]?.[0];
+    const routedAgents = reviewInput ? Object.keys(reviewInput.routingConfig.agentGlobs).sort() : [];
+    expect(routedAgents).toEqual(["architect", "clean-coder", "tester"]);
+    expect(routedAgents).not.toContain("ddd-reviewer");
+    expect(routedAgents).not.toContain("performance");
+  });
+
+  it("omits agents listed via --exclude-agents from the default run", async () => {
+    const deps = createRuntimeDeps();
+    deps.readRepoConfigFile.mockReturnValue(null);
+
+    const exitCode = await runCli(["--json", "--exclude-agents", "tester,architect"], deps.overrides);
+
+    expect(exitCode).toBe(0);
+    const reviewInput = deps.runReviewPipeline.mock.calls[0]?.[0];
+    const routedAgents = reviewInput ? Object.keys(reviewInput.routingConfig.agentGlobs).sort() : [];
+    expect(routedAgents).not.toContain("tester");
+    expect(routedAgents).not.toContain("architect");
+    expect(routedAgents).toContain("clean-coder");
+  });
+
+  it("unions config excludeAgents with --exclude-agents (dedup)", async () => {
+    const deps = createRuntimeDeps();
+    deps.readRepoConfigFile.mockReturnValue(
+      JSON.stringify({ excludeAgents: ["ddd-reviewer"] })
+    );
+
+    // --exclude-agents repeats the config agent plus adds one new one.
+    const exitCode = await runCli(
+      ["--json", "--exclude-agents", "ddd-reviewer,performance"],
+      deps.overrides
+    );
+
+    expect(exitCode).toBe(0);
+    const reviewInput = deps.runReviewPipeline.mock.calls[0]?.[0];
+    const routedAgents = reviewInput ? Object.keys(reviewInput.routingConfig.agentGlobs).sort() : [];
+    expect(routedAgents).toEqual(["architect", "clean-coder", "tester"]);
+  });
+
+  it("exits 0 with message when all agents are excluded", async () => {
+    const deps = createRuntimeDeps();
+    deps.readRepoConfigFile.mockReturnValue(null);
+
+    const exitCode = await runCli(
+      ["--json", "--exclude-agents", "clean-coder,tester,architect,ddd-reviewer,performance"],
+      deps.overrides
+    );
+
+    expect(exitCode).toBe(0);
+    expect(deps.runReviewPipeline).not.toHaveBeenCalled();
+    expect(deps.writeStdout).toHaveBeenCalledWith("[]");
+  });
+
+  it("exits 1 with a clear error when --agents requests a config-excluded agent", async () => {
+    const deps = createRuntimeDeps();
+    deps.readRepoConfigFile.mockReturnValue(
+      JSON.stringify({ excludeAgents: ["ddd-reviewer"] })
+    );
+
+    const exitCode = await runCli(["--agents", "ddd-reviewer", "--json"], deps.overrides);
+
+    expect(exitCode).toBe(1);
+    expect(deps.writeStderr).toHaveBeenCalledWith(
+      expect.stringContaining('"ddd-reviewer"')
+    );
+    expect(deps.writeStderr).toHaveBeenCalledWith(
+      expect.stringContaining("excluded")
+    );
+    expect(deps.runReviewPipeline).not.toHaveBeenCalled();
+  });
 });

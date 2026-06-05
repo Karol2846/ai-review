@@ -11,7 +11,7 @@ import {
 
 export const REPO_CONFIG_FILE_NAME = "ai-review.json";
 
-const ALLOWED_ROOT_KEYS = ["model", "agents", "exclude"] as const;
+const ALLOWED_ROOT_KEYS = ["model", "agents", "exclude", "excludeAgents"] as const;
 const ALLOWED_BUILTIN_AGENT_KEYS = ["globs", "replace"] as const;
 const ALLOWED_CUSTOM_AGENT_KEYS = ["globs", "instructionsFile"] as const;
 const BUILTIN_AGENT_NAMES = new Set<string>(AGENT_NAMES);
@@ -24,6 +24,7 @@ export interface RepoConfigOverride {
   readonly model: UserModelConfigOverride | null;
   readonly agents: AgentsMap | null;
   readonly exclude: readonly string[] | null;
+  readonly excludeAgents: readonly string[] | null;
 }
 
 export class RepoConfigError extends Error {
@@ -75,16 +76,45 @@ export function parseRepoConfig(raw: string | null): RepoConfigOverride | null {
     );
   }
 
+  const agents = parseAgentsSection(root["agents"]);
+  const knownAgentNames = new Set<string>([
+    ...AGENT_NAMES,
+    ...Object.keys(agents ?? {}),
+  ]);
+
   return {
     model: parseModelSection(root["model"]),
-    agents: parseAgentsSection(root["agents"]),
+    agents,
     exclude: parseExcludeSection(root["exclude"]),
+    excludeAgents: parseExcludeAgentsSection(root["excludeAgents"], knownAgentNames),
   };
 }
 
 function parseExcludeSection(exclude: unknown): readonly string[] | null {
   if (exclude === undefined) return null;
   return validateGlobsArray(exclude, "exclude");
+}
+
+function parseExcludeAgentsSection(
+  value: unknown,
+  knownAgentNames: ReadonlySet<string>
+): readonly string[] | null {
+  if (value === undefined) return null;
+
+  // Reuse validateGlobsArray for: must be non-empty array of non-empty strings.
+  const names = validateGlobsArray(value, "excludeAgents");
+
+  const unknown = names.filter((n) => !knownAgentNames.has(n));
+  if (unknown.length > 0) {
+    const allowed = [...knownAgentNames].sort().join(", ");
+    throw new RepoConfigError(
+      `${REPO_CONFIG_FILE_NAME}: unknown agent name(s) in "excludeAgents": "${unknown.join('", "')}". ` +
+        `Allowed: ${allowed}.`
+    );
+  }
+
+  // Dedup while preserving order.
+  return [...new Set(names)];
 }
 
 function validateGlobsArray(value: unknown, label: string): readonly string[] {
