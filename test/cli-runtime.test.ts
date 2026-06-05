@@ -684,6 +684,30 @@ describe("runCli runtime flow", () => {
     expect(deps.writeStderr).toHaveBeenCalledWith(expect.stringContaining("--exclude-agents"));
   });
 
+  it("validates --exclude-agents eagerly even when there are no changed files", async () => {
+    const deps = createRuntimeDeps();
+    deps.readRepoConfigFile.mockReturnValue(null);
+    deps.getChangedFiles.mockResolvedValue([]);
+
+    const exitCode = await runCli(["--json", "--exclude-agents", "bogus"], deps.overrides);
+
+    expect(exitCode).toBe(1);
+    expect(deps.writeStdout).not.toHaveBeenCalledWith("[]");
+    expect(deps.writeStderr).toHaveBeenCalledWith(expect.stringContaining('"bogus"'));
+  });
+
+  it("validates --agents eagerly even when there are no changed files", async () => {
+    const deps = createRuntimeDeps();
+    deps.readRepoConfigFile.mockReturnValue(null);
+    deps.getChangedFiles.mockResolvedValue([]);
+
+    const exitCode = await runCli(["--json", "--agents", "nonexistent"], deps.overrides);
+
+    expect(exitCode).toBe(1);
+    expect(deps.writeStdout).not.toHaveBeenCalledWith("[]");
+    expect(deps.writeStderr).toHaveBeenCalledWith(expect.stringContaining('"nonexistent"'));
+  });
+
   it("exits 1 with error when --agents contains an unknown agent name", async () => {
     const deps = createRuntimeDeps();
     deps.readRepoConfigFile.mockReturnValue(null);

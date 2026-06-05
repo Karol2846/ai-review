@@ -433,25 +433,9 @@ export async function runCli(
       throw err;
     }
 
-    // Effective exclusions: union of repo-config `exclude` and `--exclude` globs (dedup).
-    const effectiveExclude = [...new Set([...(configExclude ?? []), ...(options.exclude ?? [])])];
-    if (effectiveExclude.length > 0) {
-      changedFiles = excludeChangedFiles(changedFiles, effectiveExclude);
-    }
-
-    writeDebug(options.debug, `changed files: ${changedFiles.length}`, deps.writeStderr);
-
-    if (changedFiles.length === 0) {
-      writeDebug(options.debug, `reproduce locally: git diff --name-only ${mergeBase}..HEAD`, deps.writeStderr);
-      printDebugWarnings(options.debug, debugWarnings, deps.writeStderr);
-      if (options.json) {
-        deps.writeStdout("[]");
-      } else {
-        deps.writeStdout(`No changes detected against ${toOriginRef(baseBranch)}.`);
-      }
-      return 0;
-    }
-
+    // Validate agent selection eagerly — before the "no changes" early return — so a typo in
+    // --agents/--exclude-agents fails fast (exit 1) regardless of whether the diff is empty,
+    // matching how ai-review.json is validated up front by parseRepoConfig.
     const availableAgents = Object.keys(routingConfig.agentGlobs);
     const sortedAvailableAgents = [...availableAgents].sort().join(", ");
 
@@ -508,6 +492,25 @@ export async function runCli(
       deps.writeStderr("Error: No agents selected.");
       printDebugWarnings(options.debug, debugWarnings, deps.writeStderr);
       return 1;
+    }
+
+    // Effective exclusions: union of repo-config `exclude` and `--exclude` globs (dedup).
+    const effectiveExclude = [...new Set([...(configExclude ?? []), ...(options.exclude ?? [])])];
+    if (effectiveExclude.length > 0) {
+      changedFiles = excludeChangedFiles(changedFiles, effectiveExclude);
+    }
+
+    writeDebug(options.debug, `changed files: ${changedFiles.length}`, deps.writeStderr);
+
+    if (changedFiles.length === 0) {
+      writeDebug(options.debug, `reproduce locally: git diff --name-only ${mergeBase}..HEAD`, deps.writeStderr);
+      printDebugWarnings(options.debug, debugWarnings, deps.writeStderr);
+      if (options.json) {
+        deps.writeStdout("[]");
+      } else {
+        deps.writeStdout(`No changes detected against ${toOriginRef(baseBranch)}.`);
+      }
+      return 0;
     }
 
     // Custom agents declare an explicit instructionsFile; build overrides map for those only.
