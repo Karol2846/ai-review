@@ -323,6 +323,12 @@ describe("parseRepoConfig — excludeAgents section", () => {
     expect(result?.excludeAgents).toEqual(["tester", "architect"]);
   });
 
+  it("trims surrounding whitespace so a padded name matches a known agent", () => {
+    const raw = JSON.stringify({ excludeAgents: [" tester ", "architect"] });
+    const result = parseRepoConfig(raw);
+    expect(result?.excludeAgents).toEqual(["tester", "architect"]);
+  });
+
   it("throws RepoConfigError on an empty excludeAgents array", () => {
     const raw = JSON.stringify({ excludeAgents: [] });
     expect(() => parseRepoConfig(raw)).toThrow(RepoConfigError);

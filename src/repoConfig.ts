@@ -128,7 +128,8 @@ function validateGlobsArray(value: unknown, label: string): readonly string[] {
     }
   }
 
-  return value as readonly string[];
+  // Trim each entry so config values match the CLI, which trims its comma-separated lists.
+  return (value as readonly string[]).map((entry) => entry.trim());
 }
 
 /**
