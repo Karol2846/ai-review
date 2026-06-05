@@ -453,6 +453,7 @@ export async function runCli(
     }
 
     const availableAgents = Object.keys(routingConfig.agentGlobs);
+    const sortedAvailableAgents = [...availableAgents].sort().join(", ");
 
     // Validate --exclude-agents names against the known agent list.
     if (options.excludeAgents !== undefined) {
@@ -462,7 +463,7 @@ export async function runCli(
       if (unknownExcluded.length > 0) {
         const names = unknownExcluded.map((a) => `"${a}"`).join(", ");
         deps.writeStderr(
-          `Error: unknown agent(s) in --exclude-agents: ${names}. Available agents: ${availableAgents.join(", ")}.`
+          `Error: unknown agent(s) in --exclude-agents: ${names}. Available agents: ${sortedAvailableAgents}.`
         );
         return 1;
       }
@@ -480,7 +481,7 @@ export async function runCli(
       if (conflicting.length > 0) {
         const names = conflicting.map((a) => `"${a}"`).join(", ");
         deps.writeStderr(
-          `Error: Agent(s) ${names} are excluded by ${REPO_CONFIG_FILE_NAME} and cannot be run.`
+          `Error: agent(s) ${names} excluded by ${REPO_CONFIG_FILE_NAME} cannot be run.`
         );
         return 1;
       }
@@ -498,7 +499,7 @@ export async function runCli(
     if (options.agents !== undefined && filteredRoutingConfig.unknownAgents.length > 0) {
       const names = filteredRoutingConfig.unknownAgents.map((a) => `"${a}"`).join(", ");
       deps.writeStderr(
-        `Error: unknown agent(s) in --agents: ${names}. Available agents: ${availableAgents.join(", ")}.`
+        `Error: unknown agent(s) in --agents: ${names}. Available agents: ${sortedAvailableAgents}.`
       );
       return 1;
     }

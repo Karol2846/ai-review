@@ -141,7 +141,7 @@ describe("parseRepoConfig — agents section (built-in overrides)", () => {
 
   it("throws on empty globs for a built-in agent", () => {
     const raw = JSON.stringify({ agents: { tester: { globs: [] } } });
-    expect(() => parseRepoConfig(raw)).toThrow(/must not be empty/i);
+    expect(() => parseRepoConfig(raw)).toThrow(/at least one non-empty value/i);
   });
 
   it("throws on missing globs for a built-in agent", () => {
@@ -220,7 +220,7 @@ describe("parseRepoConfig — agents section (custom agents)", () => {
     const raw = JSON.stringify({
       agents: { security: { globs: [], instructionsFile: "agents/security.agent.md" } },
     });
-    expect(() => parseRepoConfig(raw)).toThrow(/must not be empty/i);
+    expect(() => parseRepoConfig(raw)).toThrow(/at least one non-empty value/i);
   });
 
   it("throws on missing globs for a custom agent", () => {
@@ -275,7 +275,7 @@ describe("parseRepoConfig — exclude section", () => {
   it("throws RepoConfigError on an empty exclude array", () => {
     const raw = JSON.stringify({ exclude: [] });
     expect(() => parseRepoConfig(raw)).toThrow(RepoConfigError);
-    expect(() => parseRepoConfig(raw)).toThrow(/must not be empty/i);
+    expect(() => parseRepoConfig(raw)).toThrow(/at least one non-empty value/i);
   });
 
   it("throws RepoConfigError when a glob entry is not a string", () => {
@@ -332,7 +332,7 @@ describe("parseRepoConfig — excludeAgents section", () => {
   it("throws RepoConfigError on an empty excludeAgents array", () => {
     const raw = JSON.stringify({ excludeAgents: [] });
     expect(() => parseRepoConfig(raw)).toThrow(RepoConfigError);
-    expect(() => parseRepoConfig(raw)).toThrow(/must not be empty/i);
+    expect(() => parseRepoConfig(raw)).toThrow(/at least one non-empty value/i);
   });
 
   it("throws RepoConfigError when excludeAgents is not an array", () => {
@@ -355,7 +355,7 @@ describe("parseRepoConfig — excludeAgents section", () => {
   it("throws RepoConfigError on an unknown agent name", () => {
     const raw = JSON.stringify({ excludeAgents: ["nope"] });
     expect(() => parseRepoConfig(raw)).toThrow(RepoConfigError);
-    expect(() => parseRepoConfig(raw)).toThrow(/unknown agent name/i);
+    expect(() => parseRepoConfig(raw)).toThrow(/unknown agent\(s\)/i);
     expect(() => parseRepoConfig(raw)).toThrow(/nope/);
   });
 

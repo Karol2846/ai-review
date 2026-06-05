@@ -98,10 +98,10 @@ function parseExcludeAgentsSection(
 
   const unknown = names.filter((n) => !knownAgentNames.has(n));
   if (unknown.length > 0) {
-    const allowed = [...knownAgentNames].sort().join(", ");
+    const available = [...knownAgentNames].sort().join(", ");
     throw new RepoConfigError(
-      `${REPO_CONFIG_FILE_NAME}: unknown agent name(s) in "excludeAgents": "${unknown.join('", "')}". ` +
-        `Allowed: ${allowed}.`
+      `${REPO_CONFIG_FILE_NAME}: unknown agent(s) in "excludeAgents": "${unknown.join('", "')}". ` +
+        `Available agents: ${available}.`
     );
   }
 
@@ -117,7 +117,9 @@ function validateGlobsArray(value: unknown, label: string): readonly string[] {
   }
 
   if (value.length === 0) {
-    throw new RepoConfigError(`${REPO_CONFIG_FILE_NAME}: "${label}" must not be empty.`);
+    throw new RepoConfigError(
+      `${REPO_CONFIG_FILE_NAME}: "${label}" must include at least one non-empty value.`
+    );
   }
 
   for (const [i, glob] of value.entries()) {
