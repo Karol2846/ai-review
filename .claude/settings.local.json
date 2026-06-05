@@ -14,7 +14,9 @@
       "Bash(dir *)",
       "Bash(Select-Object -Last 20)",
       "PowerShell(npm run *)",
-      "PowerShell(npx vitest run test/repoConfig.test.ts test/install-provider-config.test.ts test/cli-runtime.test.ts 2>&1 | Select-Object -Last 25)"
+      "PowerShell(npx vitest run test/repoConfig.test.ts test/install-provider-config.test.ts test/cli-runtime.test.ts 2>&1 | Select-Object -Last 25)",
+      "Bash(npm view *)",
+      "Bash(Select-String -Pattern '\"name\"|\"version\"|\"_npmUser\"|\"description\"')"
     ]
   }
 }
