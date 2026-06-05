@@ -45,18 +45,26 @@ Provider is selected by an **interactive setup wizard** in `src/setupWizard.ts`,
 
 Changed files are matched to agents by glob patterns via `src/router.ts` (`routeFilesToAgents`, uses `micromatch`). Types live in `src/routingTypes.ts` (`RoutingRuntimeConfig`, `AgentGlobsMap`, `AgentName`, `CustomAgentsMap`). Default agent-to-file-glob routing is in `src/defaultConfig.ts`. Per-repo overrides via `ai-review.json` in the repo root are parsed by `src/repoConfig.ts` (`parseRepoConfig` → `RepoConfigOverride { model, agents, exclude }`). Unknown keys or agent names cause a hard-fail. A future phase may add a `severity` section.
 
-- **`routing.agentGlobs`** — extends the **built-in** agents' globs only (unknown agent names hard-fail here; define new agents under `agents`). User globs are **appended** to the defaults (extend semantics, with dedup), merged by `mergeRoutingConfig`.
 - **`model`** (phase 2) — a per-repo model override: a plain **string** naming the model to use for this repo (`UserModelConfigOverride = string`). Only the model name is overridable per repo; provider, API-key env var, and `baseURL` always come from the install config (re-run the install wizard to change those). Applied by `mergeProviderConfig` (`src/installProviderConfig.ts`), which copies the install config and swaps in the model name (`{ ...base, model }`), then in `src/cli.ts` via `resolveLanguageModel(writeStdout, modelOverride)`. A non-string or empty `model` hard-fails. Example:
 
   ```json
   { "model": "claude-sonnet-4-6" }
   ```
 
-- **`agents`** (phase 3) — per-repo **custom agents** (beyond the 5 built-ins). Each entry is `{ globs, instructionsFile }`: `globs` route changed files to the agent; `instructionsFile` is a **required** repo-relative path to its `.agent.md` instruction file (no default — always explicit). The name must match `^[a-z0-9][a-z0-9-]*$` and must not collide with a built-in agent. Custom globs are folded into the routing config via `customAgentsToRoutingOverride` + `mergeRoutingConfig`; `loadAgentInstructionsFromDisk` loads a custom agent's instruction from its `instructionsFile` (skipping the directory search). A selected custom agent whose instruction cannot be loaded is a **fail-fast** config error (exit 1). Example:
+- **`agents`** (phase 3) — unified section for **both** overriding built-in agents and defining custom ones. Two modes distinguished by the agent name:
 
-  ```json
-  { "agents": { "security": { "globs": ["**/*.java"], "instructionsFile": "agents/security.agent.md" } } }
-  ```
+  - **Built-in override** (name is one of the 5 built-ins): allowed keys are `globs` (required) and `replace` (optional boolean, default `false`). `instructionsFile` is forbidden — built-in instructions always load from the `agents/` directory. `replace: false` (default) **appends** your globs to the defaults (dedup); `replace: true` **replaces** them entirely. Merging is done by `mergeRoutingConfig` (`src/repoConfig.ts`).
+
+    ```json
+    { "agents": { "tester": { "globs": ["**/*.spec.ts"] } } }
+    { "agents": { "tester": { "globs": ["**/*.spec.ts"], "replace": true } } }
+    ```
+
+  - **Custom agent** (any other name, must match `^[a-z0-9][a-z0-9-]*$`): `globs` (required) and `instructionsFile` (required — repo-relative path to its `.agent.md`). `replace` is forbidden. The agent is folded into routing via `agentsToRoutingOverride` + `mergeRoutingConfig`; its instruction is loaded directly from `instructionsFile`, skipping the directory search. A selected custom agent whose instruction cannot be loaded is a **fail-fast** config error (exit 1).
+
+    ```json
+    { "agents": { "security": { "globs": ["**/*.java"], "instructionsFile": "agents/security.agent.md" } } }
+    ```
 
 - **`exclude`** (phase 4) — a flat array of glob patterns whose matching files are dropped **before routing**, so no agent (built-in or custom) reviews them. Parsed by `parseExcludeSection` (reuses `validateGlobsArray`, so an empty array hard-fails). Applied in `src/cli.ts` by `excludeChangedFiles` (uses `micromatch.isMatch` + `normalizeGlobPath`). The CLI flag `--exclude <list>` (comma-separated globs, parsed by `parseCsvList`) adds to this: the effective exclusion set is the **union** of `ai-review.json`'s `exclude` and `--exclude`, deduplicated. Example:
 
@@ -64,13 +72,15 @@ Changed files are matched to agents by glob patterns via `src/router.ts` (`route
   { "exclude": ["**/*.generated.ts", "vendor/**"] }
   ```
 
-- **`excludeAgents`** (phase 5) — a flat array of agent names (built-in or custom) to permanently disable for this repo. Parsed by `parseExcludeAgentsSection` in `src/repoConfig.ts`; reuses `validateGlobsArray` for the non-empty-array-of-non-empty-strings constraint, then validates each name against the **known set** (built-ins ∪ names from `agents`). Unknown names hard-fail with `RepoConfigError`. Duplicate entries are deduplicated. Applied in `src/cli.ts`: the effective excluded-agents set is the **union** of `ai-review.json`'s `excludeAgents` and the `--exclude-agents` CLI flag (comma-separated, parsed by `parseCsvList`); agents in this set are filtered out of the default run. Two conflict rules: **(1)** `--agents` and `--exclude-agents` are mutually exclusive (CLI error). **(2)** If `--agents` explicitly names an agent that `ai-review.json`'s `excludeAgents` excludes, the CLI exits 1 with a clear message. When exclusion leaves zero agents, the run exits 0 (same branch as no-agents-selected). Example:
+- **`excludeAgents`** (phase 5) — a flat array of agent names (built-in or custom) to permanently disable for this repo. Parsed by `parseExcludeAgentsSection` in `src/repoConfig.ts`; reuses `validateGlobsArray` for the non-empty-array-of-non-empty-strings constraint, then validates each name against the **known set** (built-ins ∪ names from `agents`). Unknown names hard-fail with `RepoConfigError`. Duplicate entries are deduplicated. Applied in `src/cli.ts`: the effective excluded-agents set is the **union** of `ai-review.json`'s `excludeAgents` and the `--exclude-agents` CLI flag (comma-separated, parsed by `parseCsvList`); agents in this set are filtered out of the default run. Three conflict/error rules: **(1)** `--agents` and `--exclude-agents` are mutually exclusive (CLI error). **(2)** If `--agents` explicitly names an agent that `ai-review.json`'s `excludeAgents` excludes, the CLI exits 1 with a clear message. **(3)** `--exclude-agents` names are validated against the known agent list — an unknown name is a **hard error** (exit 1). Example:
 
   ```json
   { "excludeAgents": ["ddd-reviewer", "performance"] }
   ```
 
-When `--agents` is **not** passed, the run includes **every configured agent** (built-in + custom) **minus those in the effective `excludeAgents` set**; `--agents <list>` narrows the selection (whitelist, ignoring exclusions — subject to conflict rule 2 if config also excludes the agent).
+When `--agents` is **not** passed, the run includes **every configured agent** (built-in + custom) **minus those in the effective `excludeAgents` set**; `--agents <list>` narrows the selection (whitelist, subject to conflict rule 2 if config also excludes the agent).
+
+**CLI agent-selection errors** (all exit 1): unknown agent name in `--agents`, unknown agent name in `--exclude-agents`, no agents remaining after filtering (e.g. all excluded).
 
 ### Agent instructions
 

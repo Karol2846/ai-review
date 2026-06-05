@@ -39,11 +39,11 @@ describe("parseRepoConfig", () => {
     expect(() => parseRepoConfig("[]")).toThrow(RepoConfigError);
   });
 
-  it("throws with migration hint when legacy `routing` key is present", () => {
+  it("throws unknown-key error when legacy `routing` key is present", () => {
     const raw = JSON.stringify({ routing: { agentGlobs: { tester: ["**/*.ts"] } } });
     expect(() => parseRepoConfig(raw)).toThrow(RepoConfigError);
-    expect(() => parseRepoConfig(raw)).toThrow(/routing.*removed.*v2/i);
-    expect(() => parseRepoConfig(raw)).toThrow(/agents\.\<name\>\.globs/);
+    expect(() => parseRepoConfig(raw)).toThrow(/unknown key/i);
+    expect(() => parseRepoConfig(raw)).toThrow(/"routing"/);
   });
 });
 

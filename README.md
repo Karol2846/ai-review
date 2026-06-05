@@ -319,7 +319,11 @@ Add an `excludeAgents` array to permanently disable specific agents for this rep
 
 The `--exclude-agents <list>` CLI flag (comma-separated agent names) adds to this: the effective set is the **union** of `ai-review.json`'s `excludeAgents` and `--exclude-agents`, deduplicated.
 
-> **Note:** `--agents` and `--exclude-agents` cannot be used together. If `--agents` explicitly names an agent that is excluded in `ai-review.json`, the CLI errors out with a clear message.
+> **Notes on agent selection (all exit 1):**
+> - `--agents` and `--exclude-agents` cannot be used together.
+> - An unknown agent name in `--agents` or `--exclude-agents` is an error — a list of available agents is printed.
+> - If `--agents` explicitly names an agent that is excluded in `ai-review.json`, the CLI errors out with a clear message.
+> - If no agents remain after filtering (e.g. all excluded), the CLI exits 1 with `Error: No agents selected.`
 
 Unknown keys or agent names cause a hard-fail with a clear error message. If the file is absent, defaults apply unchanged.
 

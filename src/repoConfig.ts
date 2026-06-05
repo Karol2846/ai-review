@@ -58,14 +58,6 @@ export function parseRepoConfig(raw: string | null): RepoConfigOverride | null {
 
   const root = parsed as Record<string, unknown>;
 
-  // Migration hint for the removed `routing` section (v1 → v2).
-  if ("routing" in root) {
-    throw new RepoConfigError(
-      `${REPO_CONFIG_FILE_NAME}: "routing" was removed in v2. ` +
-        `Move "routing.agentGlobs.<name>" to "agents.<name>.globs" instead.`
-    );
-  }
-
   const unknownRootKeys = Object.keys(root).filter(
     (k) => !(ALLOWED_ROOT_KEYS as readonly string[]).includes(k)
   );

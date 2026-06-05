@@ -655,7 +655,7 @@ describe("runCli runtime flow", () => {
     expect(routedAgents).toEqual(["architect", "clean-coder", "tester"]);
   });
 
-  it("exits 0 with message when all agents are excluded", async () => {
+  it("exits 1 with error when all agents are excluded", async () => {
     const deps = createRuntimeDeps();
     deps.readRepoConfigFile.mockReturnValue(null);
 
@@ -664,9 +664,47 @@ describe("runCli runtime flow", () => {
       deps.overrides
     );
 
-    expect(exitCode).toBe(0);
+    expect(exitCode).toBe(1);
     expect(deps.runReviewPipeline).not.toHaveBeenCalled();
-    expect(deps.writeStdout).toHaveBeenCalledWith("[]");
+    expect(deps.writeStderr).toHaveBeenCalledWith(expect.stringContaining("No agents selected"));
+  });
+
+  it("exits 1 with error when --exclude-agents contains an unknown agent name", async () => {
+    const deps = createRuntimeDeps();
+    deps.readRepoConfigFile.mockReturnValue(null);
+
+    const exitCode = await runCli(
+      ["--json", "--exclude-agents", "bogus"],
+      deps.overrides
+    );
+
+    expect(exitCode).toBe(1);
+    expect(deps.runReviewPipeline).not.toHaveBeenCalled();
+    expect(deps.writeStderr).toHaveBeenCalledWith(expect.stringContaining('"bogus"'));
+    expect(deps.writeStderr).toHaveBeenCalledWith(expect.stringContaining("--exclude-agents"));
+  });
+
+  it("exits 1 with error when --agents contains an unknown agent name", async () => {
+    const deps = createRuntimeDeps();
+    deps.readRepoConfigFile.mockReturnValue(null);
+
+    const exitCode = await runCli(["--json", "--agents", "nonexistent"], deps.overrides);
+
+    expect(exitCode).toBe(1);
+    expect(deps.runReviewPipeline).not.toHaveBeenCalled();
+    expect(deps.writeStderr).toHaveBeenCalledWith(expect.stringContaining('"nonexistent"'));
+    expect(deps.writeStderr).toHaveBeenCalledWith(expect.stringContaining("--agents"));
+  });
+
+  it("exits 1 with error when --agents mixes valid and unknown agent names", async () => {
+    const deps = createRuntimeDeps();
+    deps.readRepoConfigFile.mockReturnValue(null);
+
+    const exitCode = await runCli(["--json", "--agents", "tester,bogus"], deps.overrides);
+
+    expect(exitCode).toBe(1);
+    expect(deps.runReviewPipeline).not.toHaveBeenCalled();
+    expect(deps.writeStderr).toHaveBeenCalledWith(expect.stringContaining('"bogus"'));
   });
 
   it("exits 1 with a clear error when --agents requests a config-excluded agent", async () => {

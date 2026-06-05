@@ -452,13 +452,29 @@ export async function runCli(
       return 0;
     }
 
+    const availableAgents = Object.keys(routingConfig.agentGlobs);
+
+    // Validate --exclude-agents names against the known agent list.
+    if (options.excludeAgents !== undefined) {
+      const unknownExcluded = options.excludeAgents.filter(
+        (a) => !Object.hasOwn(routingConfig.agentGlobs, a)
+      );
+      if (unknownExcluded.length > 0) {
+        const names = unknownExcluded.map((a) => `"${a}"`).join(", ");
+        deps.writeStderr(
+          `Error: unknown agent(s) in --exclude-agents: ${names}. Available agents: ${availableAgents.join(", ")}.`
+        );
+        return 1;
+      }
+    }
+
     // Build the effective excluded-agents set: union of config and CLI flag.
     const excludedAgentSet = new Set([
       ...(configExcludeAgents ?? []),
       ...(options.excludeAgents ?? []),
     ]);
 
-    // Rule 2: --agents explicitly requesting a config-excluded agent is an error.
+    // Rule: --agents explicitly requesting a config-excluded agent is an error.
     if (options.agents !== undefined && configExcludeAgents !== null) {
       const conflicting = options.agents.filter((a) => configExcludeAgents.includes(a));
       if (conflicting.length > 0) {
@@ -472,23 +488,25 @@ export async function runCli(
 
     // No `--agents` flag → run every configured agent minus excluded ones.
     const requestedAgents =
-      options.agents ?? Object.keys(routingConfig.agentGlobs).filter((a) => !excludedAgentSet.has(a));
+      options.agents ?? availableAgents.filter((a) => !excludedAgentSet.has(a));
     const filteredRoutingConfig = filterRoutingConfigByAgents(
       routingConfig,
       requestedAgents
     );
-    for (const unknownAgent of filteredRoutingConfig.unknownAgents) {
-      debugWarnings.push(`Requested agent "${unknownAgent}" is not present in routing config and was ignored.`);
+
+    // Validate --agents names: any name not in routing config is an error.
+    if (options.agents !== undefined && filteredRoutingConfig.unknownAgents.length > 0) {
+      const names = filteredRoutingConfig.unknownAgents.map((a) => `"${a}"`).join(", ");
+      deps.writeStderr(
+        `Error: unknown agent(s) in --agents: ${names}. Available agents: ${availableAgents.join(", ")}.`
+      );
+      return 1;
     }
 
     if (filteredRoutingConfig.selectedAgents.length === 0) {
-      if (options.json) {
-        deps.writeStdout("[]");
-      } else {
-        deps.writeStdout("No configured agents selected for this run.");
-      }
+      deps.writeStderr("Error: No agents selected.");
       printDebugWarnings(options.debug, debugWarnings, deps.writeStderr);
-      return 0;
+      return 1;
     }
 
     // Custom agents declare an explicit instructionsFile; build overrides map for those only.
