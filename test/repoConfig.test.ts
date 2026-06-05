@@ -206,6 +206,16 @@ describe("parseRepoConfig — agents section (custom agents)", () => {
     expect(() => parseRepoConfig(raw)).toThrow(/invalid custom agent name/i);
   });
 
+  it("rejects an uppercase name (typo of a built-in) instead of treating it as custom", () => {
+    // "Tester" is not the built-in "tester" (case-sensitive), and the lowercase-only name
+    // pattern must reject it rather than route it through the custom-agent branch.
+    const raw = JSON.stringify({
+      agents: { Tester: { globs: ["**/*.spec.ts"], instructionsFile: "agents/x.agent.md" } },
+    });
+    expect(() => parseRepoConfig(raw)).toThrow(RepoConfigError);
+    expect(() => parseRepoConfig(raw)).toThrow(/invalid custom agent name/i);
+  });
+
   it("throws on empty globs for a custom agent", () => {
     const raw = JSON.stringify({
       agents: { security: { globs: [], instructionsFile: "agents/security.agent.md" } },

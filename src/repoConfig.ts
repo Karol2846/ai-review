@@ -15,7 +15,7 @@ const ALLOWED_ROOT_KEYS = ["model", "agents", "exclude", "excludeAgents"] as con
 const ALLOWED_BUILTIN_AGENT_KEYS = ["globs", "replace"] as const;
 const ALLOWED_CUSTOM_AGENT_KEYS = ["globs", "instructionsFile"] as const;
 const BUILTIN_AGENT_NAMES = new Set<string>(AGENT_NAMES);
-const CUSTOM_AGENT_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/iu;
+const CUSTOM_AGENT_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/u;
 
 /**
  * Parsed `ai-review.json`. Each section is `null` when absent from the file.
