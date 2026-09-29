@@ -1,3 +1,4 @@
+import { existsSync, writeFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -39,14 +40,14 @@ describe("createLlmClient", () => {
 
   it("reports COMMAND_NOT_FOUND with an install hint when the CLI is missing", async () => {
     const run = fakeRunner({ exitCode: undefined, stdout: "", stderr: "", errorCode: "ENOENT", timedOut: false });
-    const client = createLlmClient({ provider: "claude-code" }, run);
+    const client = createLlmClient({ provider: "codex" }, run);
     const error = await expectProviderError(client.complete("review"), "COMMAND_NOT_FOUND");
-    expect(error.message).toContain("npm install -g @anthropic-ai/claude-code");
+    expect(error.message).toContain("npm install -g @openai/codex");
   });
 
   it("reports TIMEOUT when the CLI does not finish in time", async () => {
     const run = fakeRunner({ exitCode: undefined, stdout: "", stderr: "", timedOut: true });
-    const client = createLlmClient({ provider: "claude-code" }, run);
+    const client = createLlmClient({ provider: "codex" }, run);
     await expectProviderError(client.complete("review"), "TIMEOUT");
   });
 
@@ -57,7 +58,7 @@ describe("createLlmClient", () => {
     ["getaddrinfo ENOTFOUND api.example.com", "NETWORK_ERROR"],
     ["something unexpected", "COMMAND_FAILED"],
   ])("maps failure output %j to %s", async (stderr, code) => {
-    const client = createLlmClient({ provider: "claude-code" }, fakeRunner(failed(stderr)));
+    const client = createLlmClient({ provider: "codex" }, fakeRunner(failed(stderr)));
     await expectProviderError(client.complete("review"), code);
   });
 });
@@ -96,5 +97,30 @@ describe("claude-code provider", () => {
   it("fails when stdout is not a JSON result", async () => {
     const client = createLlmClient({ provider: "claude-code" }, fakeRunner(ok("plain text")));
     await expectProviderError(client.complete("x"), "COMMAND_FAILED");
+  });
+});
+
+describe("codex provider", () => {
+  it("runs codex exec ephemerally in a read-only sandbox and returns the last message", async () => {
+    let workDir = "";
+    const run = fakeRunner((inv) => {
+      workDir = inv.cwd;
+      const outputFile = inv.args[inv.args.indexOf("--output-last-message") + 1];
+      writeFileSync(outputFile, '[{"from":"file"}]', "utf8");
+      return ok("progress noise");
+    });
+    const client = createLlmClient({ provider: "codex", model: "gpt-5-codex" }, run);
+
+    await expect(client.complete("review")).resolves.toBe('[{"from":"file"}]');
+
+    const inv = run.mock.calls[0][0];
+    expect(inv.command).toBe("codex");
+    expect(inv.input).toBe("review");
+    expect(inv.args[0]).toBe("exec");
+    expect(inv.args).toContain("--ephemeral");
+    expect(inv.args[inv.args.indexOf("--sandbox") + 1]).toBe("read-only");
+    expect(inv.args[inv.args.indexOf("--model") + 1]).toBe("gpt-5-codex");
+    expect(inv.args.at(-1)).toBe("-");
+    expect(existsSync(workDir)).toBe(false);
   });
 });

@@ -34,7 +34,7 @@ describe("getInstallProviderConfigPath", () => {
 
 describe("PROVIDER_KINDS", () => {
   it("lists the supported coding-agent CLIs", () => {
-    expect([...PROVIDER_KINDS]).toEqual(["claude-code"]);
+    expect([...PROVIDER_KINDS]).toEqual(["claude-code", "codex"]);
   });
 });
 
@@ -46,8 +46,8 @@ describe("loadInstallProviderConfig", () => {
   });
 
   it("loads a config with only a provider (model is optional)", () => {
-    const path = writeTempConfig({ provider: "claude-code" });
-    expect(loadInstallProviderConfig(path)).toEqual({ provider: "claude-code" });
+    const path = writeTempConfig({ provider: "codex" });
+    expect(loadInstallProviderConfig(path)).toEqual({ provider: "codex" });
   });
 
   it("trims whitespace from model", () => {
@@ -121,9 +121,9 @@ describe("mergeProviderConfig", () => {
   });
 
   it("adds a model when the install config has none", () => {
-    expect(mergeProviderConfig({ provider: "claude-code" }, "opus")).toEqual({
-      provider: "claude-code",
-      model: "opus",
+    expect(mergeProviderConfig({ provider: "codex" }, "gpt-5-codex")).toEqual({
+      provider: "codex",
+      model: "gpt-5-codex",
     });
   });
 
