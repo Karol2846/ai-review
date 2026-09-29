@@ -20,7 +20,7 @@ Supports OpenAI-compatible endpoints (OpenAI, Groq, OpenRouter, etc.), Anthropic
 ## Install
 
 ```bash
-npm install -g ai-review
+npm install -g @karol2846/ai-review
 ```
 
 The `npm install -g` step is non-interactive — it only copies bundled agents/skills into `~/.copilot/`. The provider setup wizard runs on the **first invocation of `ai-review`** in an interactive terminal and prompts for:
@@ -332,7 +332,7 @@ Unknown keys or agent names cause a hard-fail with a clear error message. If the
 ## Uninstall
 
 ```bash
-npm uninstall -g ai-review
+npm uninstall -g @karol2846/ai-review
 rm -rf ~/.copilot/skills/ai-review
 rm ~/.copilot/agents/{clean-coder,tester,architect,ddd-reviewer,performance}.agent.md
 ```
