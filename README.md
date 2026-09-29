@@ -331,7 +331,7 @@ Unknown keys or agent names cause a hard-fail with a clear error message. If the
 ## Uninstall
 
 ```bash
-npm uninstall -g ai-review
+npm uninstall -g @karol2846/ai-review
 rm -rf ~/.copilot/skills/ai-review
 rm ~/.copilot/agents/{clean-coder,tester,architect,ddd-reviewer,performance}.agent.md
 ```
