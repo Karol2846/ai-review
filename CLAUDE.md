@@ -24,7 +24,7 @@ Tests use **Vitest** and live under `test/` (not compiled into `dist/`).
 `ai-review` is a TypeScript/Node multi-agent diff reviewer. The four pipeline phases:
 
 1. **Scope** (`src/cli.ts`, `src/git.ts`) — resolves repo root, base branch (auto-detects `origin/HEAD`, falls back to `main`/`master`), merge-base, and changed files.
-2. **Analyze** (`src/reviewPipeline.ts`, `src/router.ts`, `src/routingTypes.ts`, `src/runner.ts`, `src/batcher.ts`, `src/promptBuilder.ts`, `src/contextBuilder.ts`, `src/llmClient.ts`, `src/llmAdapter.ts`) — routes changed files to agents via glob patterns, builds `(file × agent)` task batches, sends diff + bounded file context to the user's coding-agent CLI (currently Claude Code) run headless, parses JSON findings from the response via `src/responseParser.ts`.
+2. **Analyze** (`src/reviewPipeline.ts`, `src/router.ts`, `src/routingTypes.ts`, `src/runner.ts`, `src/batcher.ts`, `src/promptBuilder.ts`, `src/contextBuilder.ts`, `src/llmClient.ts`, `src/llmAdapter.ts`) — routes changed files to agents via glob patterns, builds `(file × agent)` task batches, sends diff + bounded file context to the user's coding-agent CLI (Claude Code / Codex) run headless, parses JSON findings from the response via `src/responseParser.ts`.
 3. **Aggregate** (`src/aggregator.ts`) — deduplicates via fingerprint, applies min-severity filter, sorts by severity/file/line.
 4. **Output** (`src/reporter.ts`, `src/annotator.ts`) — `--report` renders colored terminal output; default mode inserts `// TODO [ai-review]` comments into source files; `--clean` removes them.
 
@@ -32,8 +32,9 @@ Tests use **Vitest** and live under `test/` (not compiled into `dist/`).
 
 There are no API keys or HTTP clients: every prompt is delegated to a coding-agent CLI the user already has installed and logged in, spawned via `execa`.
 
-`src/llmClient.ts` — `createLlmClient(config: LlmClientConfig, run?: CommandRunner): LlmClient`, where `LlmClient` is `{ provider, complete(prompt): Promise<string> }`. `PROVIDER_KINDS` = `claude-code` (more CLIs to follow); `PROVIDER_INFO` holds each one's label, command, install hint and login hint. The `CommandRunner` parameter (default `runCommand`, execa with a 5-minute timeout) is the test seam. Every call runs in a scratch cwd with **no tools**, and must never leave a session in the agent's history:
+`src/llmClient.ts` — `createLlmClient(config: LlmClientConfig, run?: CommandRunner): LlmClient`, where `LlmClient` is `{ provider, complete(prompt): Promise<string> }`. `PROVIDER_KINDS` = `claude-code | codex`; `PROVIDER_INFO` holds each one's label, command, install hint and login hint. The `CommandRunner` parameter (default `runCommand`, execa with a 5-minute timeout) is the test seam. Every call runs in a scratch cwd with **no tools**, and must never leave a session in the agent's history:
 - `claude-code` — `claude -p --output-format json --no-session-persistence --strict-mcp-config --setting-sources user --disable-slash-commands --system-prompt … [--model m] --tools ""`, prompt on stdin; the reply is the `result` field of the JSON (`is_error: true` → error).
+- `codex` — `codex exec --ephemeral --sandbox read-only --skip-git-repo-check --output-last-message <tmpfile> [--model m] -`, prompt on stdin; the reply is read from the tmpfile.
 
 Failures map to `LlmProviderError` codes: `ENOENT` → `COMMAND_NOT_FOUND` (with install hint), timeout → `TIMEOUT`, and non-zero exit output is classified by regex into `NOT_AUTHENTICATED` (with login hint), `RATE_LIMITED`, `SERVICE_UNAVAILABLE`, `NETWORK_ERROR`, or `COMMAND_FAILED`.
 

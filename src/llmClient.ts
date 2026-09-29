@@ -1,4 +1,6 @@
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { execa } from "execa";
 
@@ -8,7 +10,7 @@ import { LlmProviderError, type LlmProviderErrorCode } from "./llmProvider";
  * Coding-agent CLIs that ai-review can delegate prompts to. Each one reuses the login the user
  * already has in that tool — ai-review never handles API keys.
  */
-export const PROVIDER_KINDS = ["claude-code"] as const;
+export const PROVIDER_KINDS = ["claude-code", "codex"] as const;
 export type ProviderKind = (typeof PROVIDER_KINDS)[number];
 
 export interface ProviderInfo {
@@ -24,6 +26,12 @@ export const PROVIDER_INFO: Readonly<Record<ProviderKind, ProviderInfo>> = {
     command: "claude",
     installHint: "npm install -g @anthropic-ai/claude-code",
     loginHint: "run `claude` once and log in",
+  },
+  codex: {
+    label: "OpenAI Codex CLI",
+    command: "codex",
+    installHint: "npm install -g @openai/codex",
+    loginHint: "run `codex login`",
   },
 };
 
@@ -188,11 +196,47 @@ async function completeWithClaudeCode(
   return json.result;
 }
 
+/**
+ * `codex exec --ephemeral` runs without persisting session files; the read-only sandbox and a
+ * scratch working directory keep the agent from touching the user's repository.
+ */
+async function completeWithCodex(config: LlmClientConfig, prompt: string, run: CommandRunner): Promise<string> {
+  const workDir = await mkdtemp(join(tmpdir(), "ai-review-codex-"));
+  const outputFile = join(workDir, "last-message.txt");
+  try {
+    const args = [
+      "exec",
+      "--ephemeral",
+      "--sandbox",
+      "read-only",
+      "--skip-git-repo-check",
+      "--color",
+      "never",
+      "--output-last-message",
+      outputFile,
+      ...(config.model ? ["--model", config.model] : []),
+      "-",
+    ];
+    const outcome = await run({ command: "codex", args, input: prompt, cwd: workDir });
+    assertCommandSucceeded("codex", outcome);
+
+    try {
+      return await readFile(outputFile, "utf8");
+    } catch {
+      return outcome.stdout;
+    }
+  } finally {
+    await rm(workDir, { recursive: true, force: true });
+  }
+}
+
 export function createLlmClient(config: LlmClientConfig, run: CommandRunner = runCommand): LlmClient {
   const complete = (prompt: string): Promise<string> => {
     switch (config.provider) {
       case "claude-code":
         return completeWithClaudeCode(config, prompt, run);
+      case "codex":
+        return completeWithCodex(config, prompt, run);
     }
   };
 
