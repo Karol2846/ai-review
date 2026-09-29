@@ -7,7 +7,7 @@ allowed-tools: shell, view, edit
 # ai-review — Multi-Agent Code Review Skill
 
 When invoked, run `ai-review` from PATH. If unavailable, run `node dist/cli.js` from this repository root.
-The agent CLI that runs the reviews (`claude-code` or `codex`) is chosen on first run via a one-question setup and stored in `~/.ai-review/.ai-review-install-provider.json`. It reuses that CLI's existing login — no API keys.
+The agent CLI that runs the reviews (`claude-code`, `copilot`, or `codex`) is chosen on first run via a one-question setup and stored in `~/.ai-review/.ai-review-install-provider.json`. It reuses that CLI's existing login — no API keys.
 No CLI provider flags exist — runtime uses the saved config.
 
 ## How It Works

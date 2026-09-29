@@ -1,5 +1,6 @@
+import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { execa } from "execa";
@@ -10,7 +11,7 @@ import { LlmProviderError, type LlmProviderErrorCode } from "./llmProvider";
  * Coding-agent CLIs that ai-review can delegate prompts to. Each one reuses the login the user
  * already has in that tool — ai-review never handles API keys.
  */
-export const PROVIDER_KINDS = ["claude-code", "codex"] as const;
+export const PROVIDER_KINDS = ["claude-code", "copilot", "codex"] as const;
 export type ProviderKind = (typeof PROVIDER_KINDS)[number];
 
 export interface ProviderInfo {
@@ -26,6 +27,12 @@ export const PROVIDER_INFO: Readonly<Record<ProviderKind, ProviderInfo>> = {
     command: "claude",
     installHint: "npm install -g @anthropic-ai/claude-code",
     loginHint: "run `claude` once and log in",
+  },
+  copilot: {
+    label: "GitHub Copilot CLI",
+    command: "copilot",
+    installHint: "npm install -g @github/copilot",
+    loginHint: "run `copilot` and use /login",
   },
   codex: {
     label: "OpenAI Codex CLI",
@@ -230,6 +237,42 @@ async function completeWithCodex(config: LlmClientConfig, prompt: string, run: C
   }
 }
 
+function copilotHome(): string {
+  const override = process.env.COPILOT_HOME?.trim();
+  return override && override.length > 0 ? override : join(homedir(), ".copilot");
+}
+
+/**
+ * Copilot CLI has no "don't save this session" switch, so each call gets a known session id and
+ * that session's state is deleted afterwards — otherwise every review would flood the user's
+ * Copilot session history.
+ */
+async function completeWithCopilot(config: LlmClientConfig, prompt: string, run: CommandRunner): Promise<string> {
+  const sessionId = randomUUID();
+  const args = [
+    `--prompt=${prompt}`,
+    "--silent",
+    `--session-id=${sessionId}`,
+    "--no-ask-user",
+    "--no-custom-instructions",
+    "--disable-builtin-mcps",
+    "--no-auto-update",
+    "--stream=off",
+    ...(config.model ? [`--model=${config.model}`] : []),
+    // No values: the model gets no tools at all. Kept last so it cannot swallow other arguments.
+    "--available-tools",
+  ];
+  try {
+    const outcome = await run({ command: "copilot", args, cwd: tmpdir() });
+    assertCommandSucceeded("copilot", outcome);
+    return outcome.stdout;
+  } finally {
+    const sessionState = join(copilotHome(), "session-state");
+    await rm(join(sessionState, sessionId), { recursive: true, force: true });
+    await rm(join(sessionState, ".session-operation-locks", `${sessionId}.lock`), { force: true });
+  }
+}
+
 export function createLlmClient(config: LlmClientConfig, run: CommandRunner = runCommand): LlmClient {
   const complete = (prompt: string): Promise<string> => {
     switch (config.provider) {
@@ -237,6 +280,8 @@ export function createLlmClient(config: LlmClientConfig, run: CommandRunner = ru
         return completeWithClaudeCode(config, prompt, run);
       case "codex":
         return completeWithCodex(config, prompt, run);
+      case "copilot":
+        return completeWithCopilot(config, prompt, run);
     }
   };
 

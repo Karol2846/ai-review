@@ -34,7 +34,7 @@ describe("getInstallProviderConfigPath", () => {
 
 describe("PROVIDER_KINDS", () => {
   it("lists the supported coding-agent CLIs", () => {
-    expect([...PROVIDER_KINDS]).toEqual(["claude-code", "codex"]);
+    expect([...PROVIDER_KINDS]).toEqual(["claude-code", "copilot", "codex"]);
   });
 });
 
@@ -46,8 +46,8 @@ describe("loadInstallProviderConfig", () => {
   });
 
   it("loads a config with only a provider (model is optional)", () => {
-    const path = writeTempConfig({ provider: "codex" });
-    expect(loadInstallProviderConfig(path)).toEqual({ provider: "codex" });
+    const path = writeTempConfig({ provider: "copilot" });
+    expect(loadInstallProviderConfig(path)).toEqual({ provider: "copilot" });
   });
 
   it("trims whitespace from model", () => {

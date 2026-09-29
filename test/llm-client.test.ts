@@ -1,5 +1,7 @@
-import { existsSync, writeFileSync } from "node:fs";
-import { describe, expect, it, vi } from "vitest";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   createLlmClient,
@@ -47,7 +49,7 @@ describe("createLlmClient", () => {
 
   it("reports TIMEOUT when the CLI does not finish in time", async () => {
     const run = fakeRunner({ exitCode: undefined, stdout: "", stderr: "", timedOut: true });
-    const client = createLlmClient({ provider: "codex" }, run);
+    const client = createLlmClient({ provider: "copilot" }, run);
     await expectProviderError(client.complete("review"), "TIMEOUT");
   });
 
@@ -58,7 +60,7 @@ describe("createLlmClient", () => {
     ["getaddrinfo ENOTFOUND api.example.com", "NETWORK_ERROR"],
     ["something unexpected", "COMMAND_FAILED"],
   ])("maps failure output %j to %s", async (stderr, code) => {
-    const client = createLlmClient({ provider: "codex" }, fakeRunner(failed(stderr)));
+    const client = createLlmClient({ provider: "copilot" }, fakeRunner(failed(stderr)));
     await expectProviderError(client.complete("review"), code);
   });
 });
@@ -122,5 +124,78 @@ describe("codex provider", () => {
     expect(inv.args[inv.args.indexOf("--model") + 1]).toBe("gpt-5-codex");
     expect(inv.args.at(-1)).toBe("-");
     expect(existsSync(workDir)).toBe(false);
+  });
+});
+
+describe("copilot provider", () => {
+  let copilotHome: string;
+  let previousCopilotHome: string | undefined;
+
+  beforeEach(() => {
+    previousCopilotHome = process.env.COPILOT_HOME;
+    copilotHome = mkdtempSync(join(tmpdir(), "ai-review-copilot-home-"));
+    process.env.COPILOT_HOME = copilotHome;
+  });
+
+  afterEach(() => {
+    if (previousCopilotHome === undefined) delete process.env.COPILOT_HOME;
+    else process.env.COPILOT_HOME = previousCopilotHome;
+  });
+
+  function sessionIdOf(inv: CommandInvocation): string {
+    const arg = inv.args.find((a) => a.startsWith("--session-id="));
+    return arg!.slice("--session-id=".length);
+  }
+
+  function simulateSessionState(inv: CommandInvocation): string {
+    const sessionId = sessionIdOf(inv);
+    mkdirSync(join(copilotHome, "session-state", sessionId, "checkpoints"), { recursive: true });
+    mkdirSync(join(copilotHome, "session-state", ".session-operation-locks"), { recursive: true });
+    writeFileSync(join(copilotHome, "session-state", ".session-operation-locks", `${sessionId}.lock`), "");
+    return sessionId;
+  }
+
+  it("runs copilot in silent prompt mode without tools and returns stdout", async () => {
+    const run = fakeRunner(ok("[]"));
+    await expect(createLlmClient({ provider: "copilot" }, run).complete("-- review --")).resolves.toBe("[]");
+
+    const inv = run.mock.calls[0][0];
+    expect(inv.command).toBe("copilot");
+    expect(inv.args).toContain("--prompt=-- review --");
+    expect(inv.args).toContain("--silent");
+    expect(inv.args.at(-1)).toBe("--available-tools");
+    expect(sessionIdOf(inv)).toMatch(/^[0-9a-f-]{36}$/u);
+  });
+
+  it("deletes the session it created so it never shows up in Copilot's history", async () => {
+    let sessionId = "";
+    const run = fakeRunner((inv) => {
+      sessionId = simulateSessionState(inv);
+      return ok("[]");
+    });
+    await createLlmClient({ provider: "copilot" }, run).complete("review");
+
+    expect(existsSync(join(copilotHome, "session-state", sessionId))).toBe(false);
+    expect(existsSync(join(copilotHome, "session-state", ".session-operation-locks", `${sessionId}.lock`))).toBe(
+      false
+    );
+  });
+
+  it("deletes the session even when the call fails", async () => {
+    let sessionId = "";
+    const run = fakeRunner((inv) => {
+      sessionId = simulateSessionState(inv);
+      return failed("boom");
+    });
+    await expectProviderError(createLlmClient({ provider: "copilot" }, run).complete("review"), "COMMAND_FAILED");
+    expect(existsSync(join(copilotHome, "session-state", sessionId))).toBe(false);
+  });
+
+  it("uses a fresh session id per call", async () => {
+    const run = fakeRunner(ok("[]"));
+    const client = createLlmClient({ provider: "copilot" }, run);
+    await client.complete("a");
+    await client.complete("b");
+    expect(sessionIdOf(run.mock.calls[0][0])).not.toBe(sessionIdOf(run.mock.calls[1][0]));
   });
 });
