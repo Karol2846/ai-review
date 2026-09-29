@@ -1,6 +1,6 @@
 # ai-review 🔍
 
-Multi-agent code review powered by the coding agent you already use — **Claude Code** or **GitHub Copilot CLI**.  
+Multi-agent code review powered by the coding agent you already use — **Claude Code**, **GitHub Copilot CLI**, or **OpenAI Codex CLI**.  
 Run **before creating a PR** (or when reviewing someone else's branch) to get focused AI critique from 5 specialized agents — each looking at your diff through a different lens.  
 No API keys, no endpoints: ai-review runs the agent CLI in headless mode and reuses the login you already have there.
 
@@ -13,7 +13,7 @@ No API keys, no endpoints: ai-review runs the agent CLI in headless mode and reu
 | `git`       | Yes      | Diff computation                                                         |
 | `node`      | Yes      | Runtime for the CLI (v20.12+)                                            |
 | `npm`       | Yes      | Package manager                                                          |
-| Agent CLI   | Yes      | `claude` or `copilot` — installed and logged in                          |
+| Agent CLI   | Yes      | One of `claude`, `copilot`, `codex` — installed and logged in            |
 
 ---
 
@@ -29,8 +29,9 @@ The `npm install -g` step is non-interactive — it only copies bundled agents/s
 |---------------|-----------|-------------------------------------------------------------------------------------------|
 | `claude-code` | `claude`  | `claude -p --no-session-persistence --tools ""` (prompt on stdin)                         |
 | `copilot`     | `copilot` | `copilot --prompt=… --silent --available-tools` — the session it creates is deleted afterwards |
+| `codex`       | `codex`   | `codex exec --ephemeral --sandbox read-only` (prompt on stdin)                            |
 
-Reviews never show up in the agent's own session history: Claude Code is run with `--no-session-persistence`, and for Copilot CLI (which has no such flag) ai-review deletes the session it created right after each call. Every call runs in a scratch directory with no tools, so the agent cannot touch your repository.
+Reviews never show up in the agent's own session history: Claude Code and Codex are run with their "don't persist this session" flags, and for Copilot CLI (which has no such flag) ai-review deletes the session it created right after each call. Every call runs in a scratch directory with no tools, so the agent cannot touch your repository.
 
 The model is whatever the agent CLI uses by default. To pick one, add `"model"` to the config file (e.g. `{ "provider": "claude-code", "model": "haiku" }`) or to a repo's `ai-review.json`.
 
@@ -84,7 +85,7 @@ ai-review
    │
   ├─ 2. ANALYZE  (parallel batched calls per file × agent)
    │      Each agent receives: diff + bounded file context
-   │      Agent CLI (claude / copilot) runs headless → JSON response
+   │      Agent CLI (claude / copilot / codex) runs headless → JSON response
    │      Response parsed and validated per-record; invalid records dropped
    │
   ├─ 3. AGGREGATE
@@ -251,7 +252,7 @@ ai-review/
 │   ├── defaultConfig.ts       # Default agent-to-glob routing config
 │   ├── repoConfig.ts          # Load + validate + merge per-repo ai-review.json
 │   ├── llmProvider.ts         # LlmProviderError class + error code types
-│   ├── llmClient.ts           # createLlmClient — runs claude / copilot headless
+│   ├── llmClient.ts           # createLlmClient — runs claude / copilot / codex headless
 │   ├── llmAdapter.ts          # generateFindings — LlmClient.complete + response parsing
 │   ├── responseParser.ts      # parseModelResponse — extracts JSON findings from LLM text
 │   ├── installProviderConfig.ts  # Read/validate ~/.ai-review/.ai-review-install-provider.json
@@ -270,7 +271,7 @@ ai-review/
 
 ## Stack
 
-**LLM**: the agent CLI you already use (Claude Code or GitHub Copilot CLI), spawned in headless mode via `execa`. Each call sends a structured JSON prompt; findings are extracted and validated by a hand-rolled response parser.
+**LLM**: the agent CLI you already use (Claude Code, GitHub Copilot CLI or OpenAI Codex CLI), spawned in headless mode via `execa`. Each call sends a structured JSON prompt; findings are extracted and validated by a hand-rolled response parser.
 
 Agents are tuned for: **Java 17+, Spring Boot, Spock/Groovy tests, PostgreSQL, MongoDB, SQS/SNS, DDD, REST APIs**.
 

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -11,7 +11,7 @@ import { LlmProviderError, type LlmProviderErrorCode } from "./llmProvider";
  * Coding-agent CLIs that ai-review can delegate prompts to. Each one reuses the login the user
  * already has in that tool — ai-review never handles API keys.
  */
-export const PROVIDER_KINDS = ["claude-code", "copilot"] as const;
+export const PROVIDER_KINDS = ["claude-code", "copilot", "codex"] as const;
 export type ProviderKind = (typeof PROVIDER_KINDS)[number];
 
 export interface ProviderInfo {
@@ -33,6 +33,12 @@ export const PROVIDER_INFO: Readonly<Record<ProviderKind, ProviderInfo>> = {
     command: "copilot",
     installHint: "npm install -g @github/copilot",
     loginHint: "run `copilot` and use /login",
+  },
+  codex: {
+    label: "OpenAI Codex CLI",
+    command: "codex",
+    installHint: "npm install -g @openai/codex",
+    loginHint: "run `codex login`",
   },
 };
 
@@ -197,6 +203,40 @@ async function completeWithClaudeCode(
   return json.result;
 }
 
+/**
+ * `codex exec --ephemeral` runs without persisting session files; the read-only sandbox and a
+ * scratch working directory keep the agent from touching the user's repository.
+ */
+async function completeWithCodex(config: LlmClientConfig, prompt: string, run: CommandRunner): Promise<string> {
+  const workDir = await mkdtemp(join(tmpdir(), "ai-review-codex-"));
+  const outputFile = join(workDir, "last-message.txt");
+  try {
+    const args = [
+      "exec",
+      "--ephemeral",
+      "--sandbox",
+      "read-only",
+      "--skip-git-repo-check",
+      "--color",
+      "never",
+      "--output-last-message",
+      outputFile,
+      ...(config.model ? ["--model", config.model] : []),
+      "-",
+    ];
+    const outcome = await run({ command: "codex", args, input: prompt, cwd: workDir });
+    assertCommandSucceeded("codex", outcome);
+
+    try {
+      return await readFile(outputFile, "utf8");
+    } catch {
+      return outcome.stdout;
+    }
+  } finally {
+    await rm(workDir, { recursive: true, force: true });
+  }
+}
+
 function copilotHome(): string {
   const override = process.env.COPILOT_HOME?.trim();
   return override && override.length > 0 ? override : join(homedir(), ".copilot");
@@ -238,6 +278,8 @@ export function createLlmClient(config: LlmClientConfig, run: CommandRunner = ru
     switch (config.provider) {
       case "claude-code":
         return completeWithClaudeCode(config, prompt, run);
+      case "codex":
+        return completeWithCodex(config, prompt, run);
       case "copilot":
         return completeWithCopilot(config, prompt, run);
     }

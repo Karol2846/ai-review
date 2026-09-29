@@ -34,7 +34,7 @@ describe("getInstallProviderConfigPath", () => {
 
 describe("PROVIDER_KINDS", () => {
   it("lists the supported coding-agent CLIs", () => {
-    expect([...PROVIDER_KINDS]).toEqual(["claude-code", "copilot"]);
+    expect([...PROVIDER_KINDS]).toEqual(["claude-code", "copilot", "codex"]);
   });
 });
 
@@ -121,9 +121,9 @@ describe("mergeProviderConfig", () => {
   });
 
   it("adds a model when the install config has none", () => {
-    expect(mergeProviderConfig({ provider: "copilot" }, "gpt-5")).toEqual({
-      provider: "copilot",
-      model: "gpt-5",
+    expect(mergeProviderConfig({ provider: "codex" }, "gpt-5-codex")).toEqual({
+      provider: "codex",
+      model: "gpt-5-codex",
     });
   });
 
