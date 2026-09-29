@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { MockLanguageModelV3 } from "ai/test";
+import type { LlmClient } from "../src/llmClient";
 
 import type { AgentBatch } from "../src/batcher";
 import { LlmProviderError } from "../src/llmProvider";
@@ -7,24 +7,14 @@ import type { Finding } from "../src/findingSchema";
 import { runAgentBatches } from "../src/runner";
 
 const { generateFindingsMock } = vi.hoisted(() => ({
-  generateFindingsMock: vi.fn<(model: unknown, prompt: string) => Promise<Finding[]>>(),
+  generateFindingsMock: vi.fn<(client: unknown, prompt: string) => Promise<Finding[]>>(),
 }));
 
 vi.mock("../src/llmAdapter", () => ({
   generateFindings: generateFindingsMock,
 }));
 
-const fakeModel = new MockLanguageModelV3({
-  doGenerate: {
-    finishReason: { unified: "stop", raw: undefined },
-    usage: {
-      inputTokens: { total: 1, noCache: undefined, cacheRead: undefined, cacheWrite: undefined },
-      outputTokens: { total: 1, text: undefined, reasoning: undefined },
-    },
-    warnings: [],
-    content: [],
-  },
-});
+const fakeLlmClient: LlmClient = { provider: "claude-code", complete: async () => "[]" };
 
 const validFinding: Finding = {
   file: "src/app/example.ts",
@@ -74,7 +64,7 @@ describe("runAgentBatches", () => {
     const firstBatch = createBatch("batch-1", 0, 2);
     const secondBatch = createBatch("batch-2", 1, 2);
 
-    generateFindingsMock.mockImplementation(async (_model, prompt: string) => {
+    generateFindingsMock.mockImplementation(async (_client, prompt: string) => {
       if (prompt.includes("batch_id: batch-1")) {
         await delay(20);
         return [validFinding];
@@ -85,7 +75,7 @@ describe("runAgentBatches", () => {
     const result = await runAgentBatches({
       batches: [firstBatch, secondBatch],
       agentInstructions: { architect: "Review architecture." },
-      model: fakeModel,
+      llmClient: fakeLlmClient,
       concurrency: 2,
       retry: { maxRetries: 2, retryDelayMs: 0 },
     });
@@ -105,7 +95,7 @@ describe("runAgentBatches", () => {
     const result = await runAgentBatches({
       batches: [createBatch("batch-retry")],
       agentInstructions: { architect: "Review architecture." },
-      model: fakeModel,
+      llmClient: fakeLlmClient,
       concurrency: 1,
       retry: { maxRetries: 2, retryDelayMs: 0 },
     });
@@ -126,7 +116,7 @@ describe("runAgentBatches", () => {
     const result = await runAgentBatches({
       batches: [createBatch("batch-timeout")],
       agentInstructions: { architect: "Review architecture." },
-      model: fakeModel,
+      llmClient: fakeLlmClient,
       concurrency: 1,
       retry: { maxRetries: 2, retryDelayMs: 0 },
     });
@@ -149,7 +139,7 @@ describe("runAgentBatches", () => {
     const result = await runAgentBatches({
       batches: [createBatch("batch-auth")],
       agentInstructions: { architect: "Review architecture." },
-      model: fakeModel,
+      llmClient: fakeLlmClient,
       concurrency: 1,
       retry: { maxRetries: 2, retryDelayMs: 0 },
     });
@@ -169,7 +159,7 @@ describe("runAgentBatches", () => {
     const result = await runAgentBatches({
       batches: [createBatch("batch-no-instruction")],
       agentInstructions: {},
-      model: fakeModel,
+      llmClient: fakeLlmClient,
       concurrency: 1,
       retry: { maxRetries: 2, retryDelayMs: 0 },
     });
@@ -188,7 +178,7 @@ describe("runAgentBatches", () => {
       runAgentBatches({
         batches: [createBatch("b")],
         agentInstructions: { architect: "Review." },
-        model: fakeModel,
+        llmClient: fakeLlmClient,
         concurrency: 0,
         retry: { maxRetries: 0, retryDelayMs: 0 },
       })
@@ -201,7 +191,7 @@ describe("runAgentBatches", () => {
       runAgentBatches({
         batches: [createBatch("b")],
         agentInstructions: { architect: "Review." },
-        model: fakeModel,
+        llmClient: fakeLlmClient,
         concurrency: 1.5,
         retry: { maxRetries: 0, retryDelayMs: 0 },
       })
@@ -213,7 +203,7 @@ describe("runAgentBatches", () => {
       runAgentBatches({
         batches: [createBatch("b")],
         agentInstructions: { architect: "Review." },
-        model: fakeModel,
+        llmClient: fakeLlmClient,
         concurrency: 1,
         retry: { maxRetries: -1, retryDelayMs: 0 },
       })
@@ -225,7 +215,7 @@ describe("runAgentBatches", () => {
       runAgentBatches({
         batches: [createBatch("b")],
         agentInstructions: { architect: "Review." },
-        model: fakeModel,
+        llmClient: fakeLlmClient,
         concurrency: 1,
         retry: { maxRetries: 0, retryDelayMs: -1 },
       })
@@ -238,7 +228,7 @@ describe("runAgentBatches", () => {
     const result = await runAgentBatches({
       batches: [createBatch("batch-once")],
       agentInstructions: { architect: "Review." },
-      model: fakeModel,
+      llmClient: fakeLlmClient,
       concurrency: 1,
       retry: { maxRetries: 0, retryDelayMs: 0 },
     });
@@ -259,7 +249,7 @@ describe("runAgentBatches", () => {
     const result = await runAgentBatches({
       batches: [createBatch("batch-no-retry")],
       agentInstructions: { architect: "Review." },
-      model: fakeModel,
+      llmClient: fakeLlmClient,
       concurrency: 1,
       retry: { maxRetries: 0, retryDelayMs: 0 },
     });

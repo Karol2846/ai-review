@@ -9,15 +9,13 @@ export const INSTALL_PROVIDER_CONFIG_FILE_NAME = ".ai-review-install-provider.js
 
 export interface InstallProviderConfig {
   readonly provider: ProviderKind;
-  readonly model: string;
-  readonly apiKeyEnv: string;
-  readonly baseURL?: string;
+  /** Optional; when omitted the provider CLI's own default model is used. */
+  readonly model?: string;
 }
 
 /**
  * Per-repo model override (the `model` section of `ai-review.json`): just the model name.
- * Provider, API-key env var, and baseURL always come from the install config — to change those,
- * re-run the install wizard.
+ * The provider always comes from the install config — to change it, re-run the setup wizard.
  */
 export type UserModelConfigOverride = string;
 
@@ -45,25 +43,29 @@ function isProviderKind(value: unknown): value is ProviderKind {
   return typeof value === "string" && (PROVIDER_KINDS as readonly string[]).includes(value);
 }
 
-const ALLOWED_KEYS = new Set(["provider", "model", "apiKeyEnv", "baseURL"]);
-const REQUIRED_KEYS = ["provider", "model", "apiKeyEnv"] as const;
+const ALLOWED_KEYS = new Set(["provider", "model"]);
+const REQUIRED_KEYS = ["provider"] as const;
 
 /**
- * Validates the value-level constraints of a (fully resolved) provider config and returns a
- * normalized `InstallProviderConfig`. Used by the install-config loader.
- * `remediation` is appended to error messages to point the user at the right place to fix it.
+ * Validates the value-level constraints of a provider config and returns a normalized
+ * `InstallProviderConfig`. `remediation` is appended to error messages to point the user at the
+ * right place to fix it.
  */
 function validateProviderConfigShape(
   fields: Record<string, unknown>,
   remediation: string
 ): InstallProviderConfig {
-  const { provider, model, apiKeyEnv, baseURL } = fields;
+  const { provider, model } = fields;
 
   if (!isProviderKind(provider)) {
     throw new InstallProviderConfigParseError(
       "INVALID_PROVIDER_KIND",
       `"provider" must be one of ${PROVIDER_KINDS.join("|")}. Received: "${String(provider)}". ${remediation}`
     );
+  }
+
+  if (model === undefined) {
+    return { provider };
   }
 
   if (typeof model !== "string" || model.trim().length === 0) {
@@ -73,39 +75,7 @@ function validateProviderConfigShape(
     );
   }
 
-  if (typeof apiKeyEnv !== "string" || apiKeyEnv.trim().length === 0) {
-    throw new InstallProviderConfigParseError(
-      "INVALID_CONFIG_SHAPE",
-      `"apiKeyEnv" must be a non-empty string. ${remediation}`
-    );
-  }
-
-  if (baseURL !== undefined) {
-    if (provider !== "openai-compatible") {
-      throw new InstallProviderConfigParseError(
-        "INVALID_CONFIG_SHAPE",
-        `"baseURL" is only valid for the "openai-compatible" provider. ${remediation}`
-      );
-    }
-    if (typeof baseURL !== "string" || baseURL.trim().length === 0) {
-      throw new InstallProviderConfigParseError(
-        "INVALID_CONFIG_SHAPE",
-        `"baseURL" must be a non-empty string. ${remediation}`
-      );
-    }
-    try {
-      new URL(baseURL);
-    } catch {
-      throw new InstallProviderConfigParseError(
-        "INVALID_CONFIG_SHAPE",
-        `"baseURL" is not a valid URL: "${baseURL}". ${remediation}`
-      );
-    }
-
-    return { provider, model: model.trim(), apiKeyEnv: apiKeyEnv.trim(), baseURL: baseURL.trim() };
-  }
-
-  return { provider, model: model.trim(), apiKeyEnv: apiKeyEnv.trim() };
+  return { provider, model: model.trim() };
 }
 
 function parseInstallProviderConfigObject(value: unknown): InstallProviderConfig {
@@ -120,7 +90,7 @@ function parseInstallProviderConfigObject(value: unknown): InstallProviderConfig
     if (!ALLOWED_KEYS.has(key)) {
       throw new InstallProviderConfigParseError(
         "INVALID_CONFIG_SHAPE",
-        `Unknown key "${key}" in install provider config. Re-run the install wizard.`
+        `Unknown key "${key}" in install provider config. Re-run the setup wizard.`
       );
     }
   }
@@ -129,17 +99,17 @@ function parseInstallProviderConfigObject(value: unknown): InstallProviderConfig
     if (!(key in value)) {
       throw new InstallProviderConfigParseError(
         "MISSING_REQUIRED_FIELD",
-        `Missing required field "${key}" in install provider config. Re-run the install wizard.`
+        `Missing required field "${key}" in install provider config. Re-run the setup wizard.`
       );
     }
   }
 
-  return validateProviderConfigShape(value, "Re-run the install wizard.");
+  return validateProviderConfigShape(value, "Re-run the setup wizard.");
 }
 
 /**
  * Applies a per-repo model override onto the install config: only the model name changes;
- * provider, API-key env var, and baseURL are inherited from the install config unchanged.
+ * the provider is inherited from the install config unchanged.
  * `override` is `null` when the repo config has no `model` section.
  */
 export function mergeProviderConfig(

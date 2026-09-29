@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { MockLanguageModelV3 } from "ai/test";
-import { APICallError } from "ai";
 import { generateFindings } from "../src/llmAdapter";
+import type { LlmClient } from "../src/llmClient";
 import { LlmProviderError } from "../src/llmProvider";
 import type { Finding } from "../src/findingSchema";
 
@@ -15,104 +14,49 @@ const validFinding: Finding = {
   suggestion: "Add a unit test",
 };
 
-function makeModel(doGenerate: () => Promise<unknown>) {
-  return new MockLanguageModelV3({ doGenerate: doGenerate as MockLanguageModelV3["doGenerate"] });
+function clientReturning(text: string): LlmClient {
+  return { provider: "claude-code", complete: async () => text };
 }
 
-function successModel(findings: Finding[]) {
-  return makeModel(async () => ({
-    rawCall: { rawPrompt: "", rawSettings: {} },
-    finishReason: "stop" as const,
-    usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } },
-    warnings: [],
-    content: [{ type: "text" as const, text: JSON.stringify({ findings }) }],
-  }));
-}
-
-function apiErrorModel(statusCode: number) {
-  return makeModel(async () => {
-    throw new APICallError({
-      message: `HTTP ${statusCode}`,
-      url: "https://api.example.com",
-      requestBodyValues: {},
-      statusCode,
-      responseHeaders: {},
-      responseBody: "",
-    });
-  });
+function clientThrowing(error: unknown): LlmClient {
+  return {
+    provider: "claude-code",
+    complete: async () => {
+      throw error;
+    },
+  };
 }
 
 describe("generateFindings", () => {
-  it("returns Finding[] on success", async () => {
-    const findings = await generateFindings(successModel([validFinding]), "review this");
+  it("returns Finding[] parsed from the model reply", async () => {
+    const findings = await generateFindings(clientReturning(JSON.stringify([validFinding])), "review this");
     expect(findings).toHaveLength(1);
     expect(findings[0].file).toBe("src/foo.ts");
     expect(findings[0].severity).toBe("warning");
   });
 
+  it("extracts the JSON array from a reply wrapped in prose and a code fence", async () => {
+    const reply = "Here you go:\n```json\n" + JSON.stringify([validFinding]) + "\n```";
+    await expect(generateFindings(clientReturning(reply), "x")).resolves.toHaveLength(1);
+  });
+
   it("returns empty array when model returns []", async () => {
-    const findings = await generateFindings(successModel([]), "review this");
-    expect(findings).toEqual([]);
-  });
-
-  it("maps 429 to RATE_LIMITED", async () => {
-    await expect(generateFindings(apiErrorModel(429), "x")).rejects.toSatisfy(
-      (e) => e instanceof LlmProviderError && e.code === "RATE_LIMITED"
-    );
-  });
-
-  it("maps 401 to NOT_AUTHENTICATED", async () => {
-    await expect(generateFindings(apiErrorModel(401), "x")).rejects.toSatisfy(
-      (e) => e instanceof LlmProviderError && e.code === "NOT_AUTHENTICATED"
-    );
-  });
-
-  it("maps 403 to NOT_AUTHENTICATED", async () => {
-    await expect(generateFindings(apiErrorModel(403), "x")).rejects.toSatisfy(
-      (e) => e instanceof LlmProviderError && e.code === "NOT_AUTHENTICATED"
-    );
-  });
-
-  it("maps 500 to SERVICE_UNAVAILABLE", async () => {
-    await expect(generateFindings(apiErrorModel(500), "x")).rejects.toSatisfy(
-      (e) => e instanceof LlmProviderError && e.code === "SERVICE_UNAVAILABLE"
-    );
-  });
-
-  it("maps 503 to SERVICE_UNAVAILABLE", async () => {
-    await expect(generateFindings(apiErrorModel(503), "x")).rejects.toSatisfy(
-      (e) => e instanceof LlmProviderError && e.code === "SERVICE_UNAVAILABLE"
-    );
+    await expect(generateFindings(clientReturning("[]"), "x")).resolves.toEqual([]);
   });
 
   it("returns empty array when model output contains no valid findings", async () => {
-    const badModel = makeModel(async () => ({
-      rawCall: { rawPrompt: "", rawSettings: {} },
-      finishReason: "stop" as const,
-      usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } },
-      warnings: [],
-      content: [{ type: "text" as const, text: JSON.stringify([{ notAFinding: true }]) }],
-    }));
-    await expect(generateFindings(badModel, "x")).resolves.toEqual([]);
+    const reply = JSON.stringify([{ notAFinding: true }]);
+    await expect(generateFindings(clientReturning(reply), "x")).resolves.toEqual([]);
   });
 
-  it("maps abort error to TIMEOUT", async () => {
-    const abortModel = makeModel(async () => {
-      const e = new Error("The operation was aborted");
-      e.name = "AbortError";
-      throw e;
-    });
-    await expect(generateFindings(abortModel, "x")).rejects.toSatisfy(
-      (e) => e instanceof LlmProviderError && e.code === "TIMEOUT"
-    );
+  it("passes LlmProviderError through unchanged", async () => {
+    const error = new LlmProviderError("NOT_AUTHENTICATED", "log in first");
+    await expect(generateFindings(clientThrowing(error), "x")).rejects.toBe(error);
   });
 
-  it("maps fetch failure to NETWORK_ERROR", async () => {
-    const networkModel = makeModel(async () => {
-      throw new Error("fetch failed: ECONNREFUSED");
-    });
-    await expect(generateFindings(networkModel, "x")).rejects.toSatisfy(
-      (e) => e instanceof LlmProviderError && e.code === "NETWORK_ERROR"
+  it("wraps unexpected errors as COMMAND_FAILED", async () => {
+    await expect(generateFindings(clientThrowing(new Error("boom")), "x")).rejects.toSatisfy(
+      (e) => e instanceof LlmProviderError && e.code === "COMMAND_FAILED" && e.message === "boom"
     );
   });
 });

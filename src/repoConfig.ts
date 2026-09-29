@@ -264,8 +264,8 @@ export function agentsToRoutingOverride(agents: AgentsMap | null): UserRoutingCo
 
 /**
  * Parses the `model` section — a plain string naming the model to use for this repo.
- * Only the model name is overridable per repo; provider, API-key env var, and baseURL come from the
- * install config (re-run the install wizard to change those).
+ * Only the model name is overridable per repo; the provider (coding-agent CLI) comes from the
+ * install config (re-run the setup wizard to change it).
  */
 function parseModelSection(model: unknown): UserModelConfigOverride | null {
   if (model === undefined) return null;
@@ -274,7 +274,7 @@ function parseModelSection(model: unknown): UserModelConfigOverride | null {
   if (trimmed.length === 0) {
     throw new RepoConfigError(
       `${REPO_CONFIG_FILE_NAME}: "model" must be a non-empty string naming the model ` +
-        `(e.g. "claude-haiku-4-5"). To change provider, API key env, or baseURL, re-run the install wizard.`
+        `(e.g. "claude-haiku-4-5"). To change the provider, re-run the setup wizard.`
     );
   }
 

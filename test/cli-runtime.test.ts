@@ -4,14 +4,14 @@ import { tmpdir } from "node:os";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { runCli, type CliRuntimeDependencies, SETUP_COMPLETED } from "../src/cli";
+import { runCli, type CliRuntimeDependencies } from "../src/cli";
 import type { AggregatedFinding } from "../src/aggregator";
 import {
   INSTALL_PROVIDER_CONFIG_FILE_NAME,
   getInstallProviderConfigPath,
   loadInstallProviderConfig,
 } from "../src/installProviderConfig";
-import { createLanguageModel } from "../src/llmClient";
+import { createLlmClient } from "../src/llmClient";
 import type {
   ReviewPipelineWarning,
   RunReviewPipelineInput,
@@ -21,11 +21,7 @@ import type { RoutingRuntimeConfig } from "../src/routingTypes";
 
 const installProviderConfigPath = getInstallProviderConfigPath(process.cwd());
 
-const VALID_INSTALL_CONFIG = JSON.stringify({
-  provider: "openai-compatible",
-  model: "gpt-4o-mini",
-  apiKeyEnv: "AI_REVIEW_TEST_API_KEY",
-}, null, 2) + "\n";
+const VALID_INSTALL_CONFIG = JSON.stringify({ provider: "claude-code" }, null, 2) + "\n";
 
 function writeInstallProviderConfig(content: string): void {
   writeFileSync(installProviderConfigPath, content, "utf8");
@@ -122,7 +118,7 @@ interface RuntimeTestDeps {
   readonly applyAnnotations: ReturnType<typeof vi.fn<CliRuntimeDependencies["applyAnnotations"]>>;
   readonly cleanAnnotations: ReturnType<typeof vi.fn<CliRuntimeDependencies["cleanAnnotations"]>>;
   readonly readRepoConfigFile: ReturnType<typeof vi.fn<CliRuntimeDependencies["readRepoConfigFile"]>>;
-  readonly resolveLanguageModel: ReturnType<typeof vi.fn<CliRuntimeDependencies["resolveLanguageModel"]>>;
+  readonly resolveLlmClient: ReturnType<typeof vi.fn<CliRuntimeDependencies["resolveLlmClient"]>>;
 }
 
 function createRuntimeDeps(): RuntimeTestDeps {
@@ -167,10 +163,10 @@ function createRuntimeDeps(): RuntimeTestDeps {
       cleanedFilesCount: 2,
       cleanedLineCount: 6,
     });
-  const resolveLanguageModel = vi
-    .fn<CliRuntimeDependencies["resolveLanguageModel"]>()
+  const resolveLlmClient = vi
+    .fn<CliRuntimeDependencies["resolveLlmClient"]>()
     .mockImplementation(async () =>
-      createLanguageModel(loadInstallProviderConfig(installProviderConfigPath))
+      createLlmClient(loadInstallProviderConfig(installProviderConfigPath))
     );
   const readRepoConfigFile = vi
     .fn<CliRuntimeDependencies["readRepoConfigFile"]>()
@@ -191,7 +187,7 @@ function createRuntimeDeps(): RuntimeTestDeps {
       applyAnnotations,
       cleanAnnotations,
       readRepoConfigFile,
-      resolveLanguageModel,
+      resolveLlmClient,
     },
     writeStdout,
     writeStderr,
@@ -206,19 +202,17 @@ function createRuntimeDeps(): RuntimeTestDeps {
     applyAnnotations,
     cleanAnnotations,
     readRepoConfigFile,
-    resolveLanguageModel,
+    resolveLlmClient,
   };
 }
 
 beforeEach(() => {
   vi.restoreAllMocks();
   writeInstallProviderConfig(VALID_INSTALL_CONFIG);
-  process.env.AI_REVIEW_TEST_API_KEY = "test-key";
 });
 
 afterEach(() => {
   removeInstallProviderConfig();
-  delete process.env.AI_REVIEW_TEST_API_KEY;
 });
 
 describe("runCli runtime flow", () => {
@@ -308,7 +302,7 @@ describe("runCli runtime flow", () => {
         changedFiles: ["src/service.ts"],
         minSeverity: "warning",
         concurrency: 3,
-        model: expect.anything(),
+        llmClient: expect.anything(),
         routingConfig: expect.objectContaining({
           agentGlobs: expect.objectContaining({
             tester: expect.any(Array),
@@ -325,15 +319,15 @@ describe("runCli runtime flow", () => {
     expect(deps.applyAnnotations).not.toHaveBeenCalled();
   });
 
-  it("passes a LanguageModel when install config is valid", async () => {
+  it("passes an LlmClient for the configured provider when install config is valid", async () => {
     const deps = createRuntimeDeps();
 
     const exitCode = await runCli(["--json"], deps.overrides);
 
     expect(exitCode).toBe(0);
     const reviewInput = deps.runReviewPipeline.mock.calls[0]?.[0];
-    expect(reviewInput?.model).toBeDefined();
-    expect(typeof reviewInput?.model).toBe("object");
+    expect(reviewInput?.llmClient.provider).toBe("claude-code");
+    expect(typeof reviewInput?.llmClient.complete).toBe("function");
   });
 
   it("returns error exit code when install config is missing", async () => {
@@ -347,8 +341,10 @@ describe("runCli runtime flow", () => {
     expect(deps.runReviewPipeline).not.toHaveBeenCalled();
   });
 
-  it("returns error exit code when API key env var is missing", async () => {
-    delete process.env.AI_REVIEW_TEST_API_KEY;
+  it("returns error exit code when install config is from the API-key era", async () => {
+    writeInstallProviderConfig(
+      JSON.stringify({ provider: "openai-compatible", model: "gpt-4o-mini", apiKeyEnv: "OPENAI_API_KEY" })
+    );
     const deps = createRuntimeDeps();
 
     const exitCode = await runCli(["--json"], deps.overrides);
@@ -489,26 +485,16 @@ describe("runCli runtime flow", () => {
     expect(stderrLines.every((l) => !l.startsWith("DEBUG:"))).toBe(true);
   });
 
-  it("returns exit code 0 without running the pipeline when resolveLanguageModel signals setup-completed", async () => {
-    const deps = createRuntimeDeps();
-    deps.resolveLanguageModel.mockResolvedValue(SETUP_COMPLETED);
-
-    const exitCode = await runCli(["--json"], deps.overrides);
-
-    expect(exitCode).toBe(0);
-    expect(deps.runReviewPipeline).not.toHaveBeenCalled();
-  });
-
-  it("passes the ai-review.json model override to resolveLanguageModel", async () => {
+  it("passes the ai-review.json model override to resolveLlmClient", async () => {
     const deps = createRuntimeDeps();
     deps.readRepoConfigFile.mockReturnValue(
-      JSON.stringify({ model: "gpt-4o-mini" })
+      JSON.stringify({ model: "haiku" })
     );
 
     const exitCode = await runCli(["--json"], deps.overrides);
 
     expect(exitCode).toBe(0);
-    expect(deps.resolveLanguageModel).toHaveBeenCalledWith(expect.any(Function), "gpt-4o-mini");
+    expect(deps.resolveLlmClient).toHaveBeenCalledWith(expect.any(Function), "haiku");
   });
 
   it("passes a null model override when ai-review.json has no model section", async () => {
@@ -518,7 +504,7 @@ describe("runCli runtime flow", () => {
     const exitCode = await runCli(["--json"], deps.overrides);
 
     expect(exitCode).toBe(0);
-    expect(deps.resolveLanguageModel).toHaveBeenCalledWith(expect.any(Function), null);
+    expect(deps.resolveLlmClient).toHaveBeenCalledWith(expect.any(Function), null);
   });
 
   it("runs every configured agent when --agents is not provided", async () => {

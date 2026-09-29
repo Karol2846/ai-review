@@ -1,57 +1,100 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { createLanguageModel, type LlmClientConfig } from "../src/llmClient";
+import { describe, expect, it, vi } from "vitest";
+
+import {
+  createLlmClient,
+  type CommandInvocation,
+  type CommandOutcome,
+  type CommandRunner,
+} from "../src/llmClient";
 import { LlmProviderError } from "../src/llmProvider";
 
-const TEST_ENV_VAR = "AI_REVIEW_TEST_KEY";
+const ok = (stdout: string): CommandOutcome => ({ exitCode: 0, stdout, stderr: "", timedOut: false });
+const failed = (stderr: string, stdout = ""): CommandOutcome => ({ exitCode: 1, stdout, stderr, timedOut: false });
 
-const baseConfig: LlmClientConfig = {
-  provider: "openai-compatible",
-  model: "gpt-4o",
-  apiKeyEnv: TEST_ENV_VAR,
-};
+function fakeRunner(outcome: CommandOutcome | ((inv: CommandInvocation) => CommandOutcome)) {
+  return vi.fn<CommandRunner>(async (inv) => (typeof outcome === "function" ? outcome(inv) : outcome));
+}
 
-beforeEach(() => {
-  process.env[TEST_ENV_VAR] = "test-key-value";
+function claudeJson(result: string, isError = false): string {
+  return JSON.stringify({ type: "result", subtype: isError ? "error" : "success", is_error: isError, result });
+}
+
+async function expectProviderError(promise: Promise<unknown>, code: string): Promise<LlmProviderError> {
+  const error = await promise.then(
+    () => undefined,
+    (e: unknown) => e
+  );
+  expect(error).toBeInstanceOf(LlmProviderError);
+  expect((error as LlmProviderError).code).toBe(code);
+  return error as LlmProviderError;
+}
+
+describe("createLlmClient", () => {
+  it("rejects an empty prompt without spawning anything", async () => {
+    const run = fakeRunner(ok(""));
+    const client = createLlmClient({ provider: "claude-code" }, run);
+    await expectProviderError(client.complete("   "), "INVALID_PROMPT");
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it("reports COMMAND_NOT_FOUND with an install hint when the CLI is missing", async () => {
+    const run = fakeRunner({ exitCode: undefined, stdout: "", stderr: "", errorCode: "ENOENT", timedOut: false });
+    const client = createLlmClient({ provider: "claude-code" }, run);
+    const error = await expectProviderError(client.complete("review"), "COMMAND_NOT_FOUND");
+    expect(error.message).toContain("npm install -g @anthropic-ai/claude-code");
+  });
+
+  it("reports TIMEOUT when the CLI does not finish in time", async () => {
+    const run = fakeRunner({ exitCode: undefined, stdout: "", stderr: "", timedOut: true });
+    const client = createLlmClient({ provider: "claude-code" }, run);
+    await expectProviderError(client.complete("review"), "TIMEOUT");
+  });
+
+  it.each([
+    ["Error: Not logged in. Please run /login", "NOT_AUTHENTICATED"],
+    ["429 Too Many Requests", "RATE_LIMITED"],
+    ["API Error: 529 overloaded", "SERVICE_UNAVAILABLE"],
+    ["getaddrinfo ENOTFOUND api.example.com", "NETWORK_ERROR"],
+    ["something unexpected", "COMMAND_FAILED"],
+  ])("maps failure output %j to %s", async (stderr, code) => {
+    const client = createLlmClient({ provider: "claude-code" }, fakeRunner(failed(stderr)));
+    await expectProviderError(client.complete("review"), code);
+  });
 });
 
-afterEach(() => {
-  delete process.env[TEST_ENV_VAR];
-});
+describe("claude-code provider", () => {
+  it("runs claude headless without tools or session persistence, prompt on stdin", async () => {
+    const run = fakeRunner(ok(claudeJson("[]")));
+    const client = createLlmClient({ provider: "claude-code" }, run);
 
-describe("createLanguageModel", () => {
-  it("throws NOT_AUTHENTICATED when env var is missing", () => {
-    delete process.env[TEST_ENV_VAR];
-    expect(() => createLanguageModel(baseConfig)).toThrow(LlmProviderError);
-    try {
-      createLanguageModel(baseConfig);
-    } catch (e) {
-      expect(e).toBeInstanceOf(LlmProviderError);
-      expect((e as LlmProviderError).code).toBe("NOT_AUTHENTICATED");
-      expect((e as LlmProviderError).message).toContain(TEST_ENV_VAR);
-    }
+    await expect(client.complete("review this diff")).resolves.toBe("[]");
+
+    const inv = run.mock.calls[0][0];
+    expect(inv.command).toBe("claude");
+    expect(inv.input).toBe("review this diff");
+    expect(inv.args).toContain("-p");
+    expect(inv.args).toContain("--no-session-persistence");
+    expect(inv.args).toContain("--strict-mcp-config");
+    expect(inv.args.slice(-2)).toEqual(["--tools", ""]);
+    expect(inv.args).not.toContain("--model");
   });
 
-  it("returns a LanguageModel for openai-compatible", () => {
-    const model = createLanguageModel(baseConfig);
-    expect(model).toBeDefined();
-    expect(typeof model).toBe("object");
+  it("passes the configured model", async () => {
+    const run = fakeRunner(ok(claudeJson("[]")));
+    await createLlmClient({ provider: "claude-code", model: "haiku" }, run).complete("x");
+    const args = run.mock.calls[0][0].args;
+    expect(args[args.indexOf("--model") + 1]).toBe("haiku");
   });
 
-  it("returns a LanguageModel for openai-compatible with custom baseURL", () => {
-    const model = createLanguageModel({
-      ...baseConfig,
-      baseURL: "https://api.groq.com/openai/v1",
-    });
-    expect(model).toBeDefined();
+  it("maps an is_error JSON result to a provider error", async () => {
+    const run = fakeRunner(failed("", claudeJson("Invalid API key · Please run /login", true)));
+    const client = createLlmClient({ provider: "claude-code" }, run);
+    const error = await expectProviderError(client.complete("x"), "NOT_AUTHENTICATED");
+    expect(error.message).toContain("Invalid API key");
   });
 
-  it("returns a LanguageModel for anthropic", () => {
-    const model = createLanguageModel({ ...baseConfig, provider: "anthropic", model: "claude-3-5-haiku-20241022" });
-    expect(model).toBeDefined();
-  });
-
-  it("returns a LanguageModel for google", () => {
-    const model = createLanguageModel({ ...baseConfig, provider: "google", model: "gemini-2.0-flash" });
-    expect(model).toBeDefined();
+  it("fails when stdout is not a JSON result", async () => {
+    const client = createLlmClient({ provider: "claude-code" }, fakeRunner(ok("plain text")));
+    await expectProviderError(client.complete("x"), "COMMAND_FAILED");
   });
 });
