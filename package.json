@@ -1,7 +1,7 @@
 {
   "name": "@karol2846/ai-review",
   "version": "0.2.0",
-  "description": "Multi-agent local code review powered by the coding-agent CLI you already use (Claude Code)",
+  "description": "Multi-agent local code review powered by the coding-agent CLI you already use (Claude Code, Copilot CLI)",
   "license": "MIT",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
