@@ -1,5 +1,5 @@
 import { join, resolve } from "node:path";
-import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 import {
@@ -13,9 +13,8 @@ import {
 } from "../src/installProviderConfig";
 
 const validConfig = {
-  provider: "openai-compatible" as const,
-  model: "gpt-4o",
-  apiKeyEnv: "OPENAI_API_KEY",
+  provider: "claude-code" as const,
+  model: "haiku",
 };
 
 function writeTempConfig(content: unknown): string {
@@ -34,13 +33,8 @@ describe("getInstallProviderConfigPath", () => {
 });
 
 describe("PROVIDER_KINDS", () => {
-  it("includes all expected providers", () => {
-    expect(PROVIDER_KINDS).toContain("openai-compatible");
-    expect(PROVIDER_KINDS).toContain("anthropic");
-    expect(PROVIDER_KINDS).toContain("google");
-    expect(PROVIDER_KINDS).not.toContain("bedrock");
-    expect(PROVIDER_KINDS).not.toContain("ollama");
-    expect(PROVIDER_KINDS).not.toContain("copilot");
+  it("lists the supported coding-agent CLIs", () => {
+    expect([...PROVIDER_KINDS]).toEqual(["claude-code"]);
   });
 });
 
@@ -51,133 +45,90 @@ describe("loadInstallProviderConfig", () => {
     expect(result).toEqual(validConfig);
   });
 
-  it("loads a valid config with optional baseURL", () => {
-    const config = { ...validConfig, baseURL: "https://api.groq.com/openai/v1" };
-    const path = writeTempConfig(config);
-    const result = loadInstallProviderConfig(path);
-    expect(result.baseURL).toBe("https://api.groq.com/openai/v1");
+  it("loads a config with only a provider (model is optional)", () => {
+    const path = writeTempConfig({ provider: "claude-code" });
+    expect(loadInstallProviderConfig(path)).toEqual({ provider: "claude-code" });
   });
 
-  it("trims whitespace from model and apiKeyEnv", () => {
-    const path = writeTempConfig({ ...validConfig, model: "  gpt-4o  ", apiKeyEnv: "  MY_KEY  " });
-    const result = loadInstallProviderConfig(path);
-    expect(result.model).toBe("gpt-4o");
-    expect(result.apiKeyEnv).toBe("MY_KEY");
+  it("trims whitespace from model", () => {
+    const path = writeTempConfig({ ...validConfig, model: "  haiku  " });
+    expect(loadInstallProviderConfig(path).model).toBe("haiku");
   });
 
   it("throws INVALID_JSON for malformed JSON", () => {
     const path = writeTempConfig('{"provider":');
-    expect(() => loadInstallProviderConfig(path)).toThrow(InstallProviderConfigParseError);
-    try { loadInstallProviderConfig(path); } catch (e) {
-      expect((e as InstallProviderConfigParseError).code).toBe("INVALID_JSON");
-    }
+    expect(() => loadInstallProviderConfig(path)).toThrow(
+      expect.objectContaining({ code: "INVALID_JSON" })
+    );
   });
 
   it("throws INVALID_CONFIG_SHAPE when root is not an object", () => {
     const path = writeTempConfig('"just a string"');
-    expect(() => loadInstallProviderConfig(path)).toThrow(InstallProviderConfigParseError);
-    try { loadInstallProviderConfig(path); } catch (e) {
-      expect((e as InstallProviderConfigParseError).code).toBe("INVALID_CONFIG_SHAPE");
-    }
+    expect(() => loadInstallProviderConfig(path)).toThrow(
+      expect.objectContaining({ code: "INVALID_CONFIG_SHAPE" })
+    );
   });
 
   it("throws INVALID_CONFIG_SHAPE for unknown keys", () => {
     const path = writeTempConfig({ ...validConfig, extra: true });
-    try { loadInstallProviderConfig(path); } catch (e) {
-      expect((e as InstallProviderConfigParseError).code).toBe("INVALID_CONFIG_SHAPE");
-    }
+    expect(() => loadInstallProviderConfig(path)).toThrow(
+      expect.objectContaining({ code: "INVALID_CONFIG_SHAPE" })
+    );
   });
 
-  it("throws MISSING_REQUIRED_FIELD when model is absent", () => {
-    const { model: _m, ...noModel } = validConfig;
-    const path = writeTempConfig(noModel);
-    try { loadInstallProviderConfig(path); } catch (e) {
-      expect((e as InstallProviderConfigParseError).code).toBe("MISSING_REQUIRED_FIELD");
-    }
+  it("rejects a config from the API-key era so the setup wizard runs again", () => {
+    const path = writeTempConfig({ provider: "anthropic", model: "claude-sonnet-4-6", apiKeyEnv: "ANTHROPIC_API_KEY" });
+    expect(() => loadInstallProviderConfig(path)).toThrow(InstallProviderConfigParseError);
   });
 
-  it("throws MISSING_REQUIRED_FIELD when apiKeyEnv is absent", () => {
-    const { apiKeyEnv: _a, ...noApiKey } = validConfig;
-    const path = writeTempConfig(noApiKey);
-    try { loadInstallProviderConfig(path); } catch (e) {
-      expect((e as InstallProviderConfigParseError).code).toBe("MISSING_REQUIRED_FIELD");
-    }
+  it("throws MISSING_REQUIRED_FIELD when provider is absent", () => {
+    const path = writeTempConfig({ model: "haiku" });
+    expect(() => loadInstallProviderConfig(path)).toThrow(
+      expect.objectContaining({ code: "MISSING_REQUIRED_FIELD" })
+    );
   });
 
   it("throws INVALID_PROVIDER_KIND for unsupported provider", () => {
-    const path = writeTempConfig({ ...validConfig, provider: "ollama" });
-    try { loadInstallProviderConfig(path); } catch (e) {
-      expect((e as InstallProviderConfigParseError).code).toBe("INVALID_PROVIDER_KIND");
-      expect((e as InstallProviderConfigParseError).message).toContain("openai-compatible");
-    }
+    const path = writeTempConfig({ ...validConfig, provider: "openai-compatible" });
+    expect(() => loadInstallProviderConfig(path)).toThrow(
+      expect.objectContaining({ code: "INVALID_PROVIDER_KIND", message: expect.stringContaining("claude-code") })
+    );
   });
 
   it("throws INVALID_CONFIG_SHAPE for empty model", () => {
     const path = writeTempConfig({ ...validConfig, model: "   " });
-    try { loadInstallProviderConfig(path); } catch (e) {
-      expect((e as InstallProviderConfigParseError).code).toBe("INVALID_CONFIG_SHAPE");
-    }
-  });
-
-  it("throws INVALID_CONFIG_SHAPE for baseURL on non-openai-compatible provider", () => {
-    const path = writeTempConfig({ provider: "anthropic", model: "claude-3-5-haiku-20241022", apiKeyEnv: "MY_KEY", baseURL: "https://example.com" });
-    try { loadInstallProviderConfig(path); } catch (e) {
-      expect((e as InstallProviderConfigParseError).code).toBe("INVALID_CONFIG_SHAPE");
-    }
-  });
-
-  it("throws INVALID_CONFIG_SHAPE for invalid baseURL", () => {
-    const path = writeTempConfig({ ...validConfig, baseURL: "not-a-url" });
-    try { loadInstallProviderConfig(path); } catch (e) {
-      expect((e as InstallProviderConfigParseError).code).toBe("INVALID_CONFIG_SHAPE");
-    }
+    expect(() => loadInstallProviderConfig(path)).toThrow(
+      expect.objectContaining({ code: "INVALID_CONFIG_SHAPE" })
+    );
   });
 
   it("throws INVALID_CONFIG_SHAPE when config file does not exist", () => {
-    try { loadInstallProviderConfig("/nonexistent/path/.ai-review-install-provider.json"); } catch (e) {
-      expect((e as InstallProviderConfigParseError).code).toBe("INVALID_CONFIG_SHAPE");
-    }
+    expect(() => loadInstallProviderConfig("/nonexistent/path/.ai-review-install-provider.json")).toThrow(
+      expect.objectContaining({ code: "INVALID_CONFIG_SHAPE" })
+    );
   });
 });
 
 describe("mergeProviderConfig", () => {
-  const installOpenAI: InstallProviderConfig = {
-    provider: "openai-compatible",
-    model: "gpt-4o",
-    apiKeyEnv: "OPENAI_API_KEY",
-  };
-  const installGroq: InstallProviderConfig = {
-    provider: "openai-compatible",
-    model: "gpt-4o",
-    apiKeyEnv: "OPENAI_API_KEY",
-    baseURL: "https://api.groq.com/openai/v1",
-  };
+  const installClaude: InstallProviderConfig = { provider: "claude-code", model: "sonnet" };
 
   it("returns the base config unchanged when override is null", () => {
-    expect(mergeProviderConfig(installOpenAI, null)).toBe(installOpenAI);
+    expect(mergeProviderConfig(installClaude, null)).toBe(installClaude);
   });
 
-  it("overrides only the model name, inheriting provider and apiKeyEnv", () => {
-    const result = mergeProviderConfig(installOpenAI, "gpt-4o-mini");
-    expect(result).toEqual({
-      provider: "openai-compatible",
-      model: "gpt-4o-mini",
-      apiKeyEnv: "OPENAI_API_KEY",
-    });
+  it("overrides only the model name, inheriting the provider", () => {
+    expect(mergeProviderConfig(installClaude, "haiku")).toEqual({ provider: "claude-code", model: "haiku" });
   });
 
-  it("preserves an inherited baseURL while swapping the model name", () => {
-    const result = mergeProviderConfig(installGroq, "llama-3.3-70b-versatile");
-    expect(result).toEqual({
-      provider: "openai-compatible",
-      model: "llama-3.3-70b-versatile",
-      apiKeyEnv: "OPENAI_API_KEY",
-      baseURL: "https://api.groq.com/openai/v1",
+  it("adds a model when the install config has none", () => {
+    expect(mergeProviderConfig({ provider: "claude-code" }, "opus")).toEqual({
+      provider: "claude-code",
+      model: "opus",
     });
   });
 
   it("does not mutate the base config", () => {
-    mergeProviderConfig(installOpenAI, "gpt-4o-mini");
-    expect(installOpenAI.model).toBe("gpt-4o");
+    mergeProviderConfig(installClaude, "haiku");
+    expect(installClaude.model).toBe("sonnet");
   });
 });

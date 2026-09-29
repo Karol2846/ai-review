@@ -2,97 +2,75 @@ import { createInterface, type Interface } from "node:readline";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { execa } from "execa";
+
 import {
   INSTALL_PROVIDER_CONFIG_DIR,
   INSTALL_PROVIDER_CONFIG_FILE_NAME,
   PROVIDER_KINDS,
+  type InstallProviderConfig,
   type ProviderKind,
 } from "./installProviderConfig";
+import { PROVIDER_INFO } from "./llmClient";
 
-export interface SetupWizardResult {
-  readonly provider: ProviderKind;
-  readonly model: string;
-  readonly apiKeyEnv: string;
-  readonly baseURL?: string;
-}
+export type SetupWizardResult = InstallProviderConfig;
 
 function ask(rl: Interface, question: string): Promise<string> {
   return new Promise((resolve) => rl.question(question, resolve));
 }
 
-async function promptProvider(rl: Interface): Promise<ProviderKind> {
-  process.stdout.write("\nSelect provider:\n");
-  process.stdout.write("  1) openai-compatible  (OpenAI, Groq, OpenRouter, any OpenAI-compatible endpoint)\n");
-  process.stdout.write("  2) anthropic\n");
-  process.stdout.write("  3) google\n");
+/** Returns true when the provider's CLI can be launched from PATH. */
+export async function isProviderInstalled(provider: ProviderKind): Promise<boolean> {
+  const result = await execa(PROVIDER_INFO[provider].command, ["--version"], {
+    reject: false,
+    timeout: 15_000,
+  });
+  return result.exitCode === 0;
+}
+
+async function promptProvider(
+  rl: Interface,
+  installed: ReadonlySet<ProviderKind>
+): Promise<ProviderKind> {
+  process.stdout.write("\nWhich coding agent should run the reviews? ai-review uses its existing login.\n");
+  PROVIDER_KINDS.forEach((provider, index) => {
+    const status = installed.has(provider) ? "installed" : "not found in PATH";
+    process.stdout.write(`  ${index + 1}) ${PROVIDER_INFO[provider].label}  (${status})\n`);
+  });
+
+  const defaultProvider = PROVIDER_KINDS.find((provider) => installed.has(provider));
+  const defaultIndex = defaultProvider ? PROVIDER_KINDS.indexOf(defaultProvider) + 1 : undefined;
+  const choices = PROVIDER_KINDS.map((_, index) => index + 1).join("/");
 
   for (;;) {
-    const answer = (await ask(rl, "[1/2/3]: ")).trim();
-    switch (answer) {
-      case "1": case "openai-compatible": return "openai-compatible";
-      case "2": case "anthropic":         return "anthropic";
-      case "3": case "google":            return "google";
-      default:
-        process.stderr.write(`Invalid selection "${answer}". Enter 1, 2, or 3.\n`);
-    }
+    const suffix = defaultIndex !== undefined ? ` [${defaultIndex}]` : "";
+    const answer = (await ask(rl, `[${choices}]${suffix}: `)).trim();
+    if (answer.length === 0 && defaultProvider !== undefined) return defaultProvider;
+
+    const byIndex = PROVIDER_KINDS[Number(answer) - 1];
+    const provider = byIndex ?? PROVIDER_KINDS.find((kind) => kind === answer);
+    if (provider !== undefined) return provider;
+
+    process.stderr.write(`Invalid selection "${answer}". Enter one of ${choices}.\n`);
   }
-}
-
-async function promptNonEmpty(rl: Interface, question: string, defaultValue?: string): Promise<string> {
-  for (;;) {
-    const value = (await ask(rl, question)).trim();
-    if (value.length > 0) return value;
-    if (defaultValue !== undefined) return defaultValue;
-    process.stderr.write("Value cannot be empty.\n");
-  }
-}
-
-async function promptBaseURL(rl: Interface): Promise<string | undefined> {
-  const yesNo = (await ask(rl, "Use a custom baseURL (e.g. for Groq, OpenRouter)? [y/N]: ")).trim().toLowerCase();
-  if (yesNo !== "y" && yesNo !== "yes") return undefined;
-
-  for (;;) {
-    const url = (await ask(rl, "baseURL: ")).trim();
-    if (url.length === 0) {
-      process.stderr.write("baseURL cannot be empty.\n");
-      continue;
-    }
-    try {
-      new URL(url);
-      return url;
-    } catch {
-      process.stderr.write(`"${url}" is not a valid URL. Include scheme (e.g. https://...).\n`);
-    }
-  }
-}
-
-function modelHint(provider: ProviderKind): string {
-  switch (provider) {
-    case "openai-compatible":
-      return "Model name (e.g. gpt-4o-mini; for Groq: llama-3.3-70b-versatile): ";
-    case "anthropic":
-      return "Model name (e.g. claude-sonnet-4-6): ";
-    case "google":
-      return "Model name (e.g. gemini-2.0-flash): ";
-  }
-}
-
-async function collectConfig(rl: Interface): Promise<SetupWizardResult> {
-  const provider = await promptProvider(rl);
-  const model = await promptNonEmpty(rl, modelHint(provider));
-  const apiKeyEnv = await promptNonEmpty(
-    rl,
-    "Environment variable name for API key [AI_REVIEW_API_KEY]: ",
-    "AI_REVIEW_API_KEY"
-  );
-  const baseURL = provider === "openai-compatible" ? await promptBaseURL(rl) : undefined;
-  return { provider, model, apiKeyEnv, ...(baseURL !== undefined ? { baseURL } : {}) };
 }
 
 export async function runSetupWizard(): Promise<SetupWizardResult> {
+  const detected = await Promise.all(
+    PROVIDER_KINDS.map(async (provider) => ((await isProviderInstalled(provider)) ? provider : undefined))
+  );
+  const installed = new Set(detected.filter((provider): provider is ProviderKind => provider !== undefined));
+
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   try {
-    return await collectConfig(rl);
+    const provider = await promptProvider(rl, installed);
+    if (!installed.has(provider)) {
+      const info = PROVIDER_INFO[provider];
+      process.stdout.write(
+        `\n${info.label} was not found. Install it with \`${info.installHint}\`, then ${info.loginHint}.\n`
+      );
+    }
+    return { provider };
   } finally {
     rl.close();
   }

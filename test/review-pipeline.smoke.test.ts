@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { MockLanguageModelV3 } from "ai/test";
+import type { LlmClient } from "../src/llmClient";
 
 import type { AgentBatch } from "../src/batcher";
 import type { BuildFileContextsResult } from "../src/contextBuilder";
@@ -37,17 +37,7 @@ vi.mock("../src/runner", async () => {
 
 import { runReviewPipeline } from "../src/reviewPipeline";
 
-const fakeModel = new MockLanguageModelV3({
-  doGenerate: {
-    finishReason: { unified: "stop", raw: undefined },
-    usage: {
-      inputTokens: { total: 1, noCache: undefined, cacheRead: undefined, cacheWrite: undefined },
-      outputTokens: { total: 1, text: undefined, reasoning: undefined },
-    },
-    warnings: [],
-    content: [],
-  },
-});
+const fakeLlmClient: LlmClient = { provider: "claude-code", complete: async () => "[]" };
 
 function createRoutingConfig(): RoutingRuntimeConfig {
   return {
@@ -178,7 +168,7 @@ describe("runReviewPipeline (smoke)", () => {
     };
 
     runAgentBatchesMock.mockImplementation(async (input: RunAgentBatchesInput) => {
-      expect(input.model).toBe(fakeModel);
+      expect(input.llmClient).toBe(fakeLlmClient);
       const results = input.batches.map((batch) => {
         if (batch.agent === "architect") {
           return createSuccess(batch, [architectFinding]);
@@ -196,7 +186,7 @@ describe("runReviewPipeline (smoke)", () => {
         tester: "Review tests and edge cases.",
         architect: "Review architecture and API safety.",
       },
-      model: fakeModel,
+      llmClient: fakeLlmClient,
       maxCharLimit: 4_000,
       concurrency: 2,
       retry: { maxRetries: 1, retryDelayMs: 0 },
@@ -273,7 +263,7 @@ describe("runReviewPipeline (smoke)", () => {
         tester: "Review tests and edge cases.",
         architect: "Review architecture and API safety.",
       },
-      model: fakeModel,
+      llmClient: fakeLlmClient,
       maxCharLimit: 4_000,
       concurrency: 2,
       retry: { maxRetries: 1, retryDelayMs: 0 },
