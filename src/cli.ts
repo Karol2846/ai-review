@@ -3,10 +3,6 @@
 import {homedir} from "node:os";
 import {join, resolve} from "node:path";
 
-import type {LanguageModel} from "ai";
-
-/** Returned by resolveLanguageModel when the setup wizard ran and the user must re-run. */
-export const SETUP_COMPLETED = Symbol("setup-completed");
 import {execa} from "execa";
 import micromatch from "micromatch";
 
@@ -29,7 +25,7 @@ import {
   mergeProviderConfig,
   type UserModelConfigOverride,
 } from "./installProviderConfig";
-import {createLanguageModel} from "./llmClient";
+import {createLlmClient, type LlmClient, PROVIDER_INFO} from "./llmClient";
 import {parseRepoConfig, mergeRoutingConfig, agentsToRoutingOverride, isCustomAgent, RepoConfigError, REPO_CONFIG_FILE_NAME} from "./repoConfig";
 import {renderReport} from "./reporter";
 import {runReviewPipeline, type RunReviewPipelineInput, type RunReviewPipelineResult} from "./reviewPipeline";
@@ -60,10 +56,10 @@ export interface CliRuntimeDependencies {
     agentNames: readonly string[],
     instructionFileOverrides?: Readonly<Record<string, string>>
   ) => Promise<LoadAgentInstructionsResult>;
-  readonly resolveLanguageModel: (
+  readonly resolveLlmClient: (
     writeStdout: (m: string) => void,
     modelOverride: UserModelConfigOverride | null
-  ) => Promise<LanguageModel | typeof SETUP_COMPLETED>;
+  ) => Promise<LlmClient>;
   readonly runReviewPipeline: (input: RunReviewPipelineInput) => Promise<RunReviewPipelineResult>;
   readonly renderReport: typeof renderReport;
   readonly applyAnnotations: (
@@ -282,7 +278,7 @@ function defaultDependencies(): CliRuntimeDependencies {
     getHeadSha: async () => (await runGit(["rev-parse", "HEAD"])).trim(),
     getChangedFiles,
     loadAgentInstructions: loadAgentInstructionsFromDisk,
-    resolveLanguageModel: async (writeStdout, modelOverride) => {
+    resolveLlmClient: async (writeStdout, modelOverride) => {
       const configPath = getInstallProviderConfigPath();
       let installConfig;
       try {
@@ -290,18 +286,19 @@ function defaultDependencies(): CliRuntimeDependencies {
       } catch {
         if (!process.stdin.isTTY) {
           throw new Error(
-            "ai-review is not configured. Run ai-review in an interactive terminal to complete setup."
+            `ai-review is not configured (or ${configPath} is from an older version). ` +
+              "Run ai-review in an interactive terminal to complete setup."
           );
         }
         writeStdout("ai-review is not configured. Starting setup wizard...");
         const { runSetupWizard, saveWizardConfig } = await import("./setupWizard");
-        const wizardResult = await runSetupWizard();
-        const savedPath = await saveWizardConfig(wizardResult);
-        writeStdout(`\nConfiguration saved to ${savedPath}`);
-        writeStdout(`Set ${wizardResult.apiKeyEnv} in your shell, then re-run ai-review.`);
-        return SETUP_COMPLETED;
+        installConfig = await runSetupWizard();
+        const savedPath = await saveWizardConfig(installConfig);
+        writeStdout(
+          `\nUsing ${PROVIDER_INFO[installConfig.provider].label}. Configuration saved to ${savedPath}\n`
+        );
       }
-      return createLanguageModel(mergeProviderConfig(installConfig, modelOverride));
+      return createLlmClient(mergeProviderConfig(installConfig, modelOverride));
     },
     runReviewPipeline,
     renderReport,
@@ -551,11 +548,7 @@ export async function runCli(
       }
     }
 
-    const modelOrSetup = await deps.resolveLanguageModel(deps.writeStdout, modelOverride);
-    if (modelOrSetup === SETUP_COMPLETED) {
-      return 0;
-    }
-    const model = modelOrSetup;
+    const llmClient = await deps.resolveLlmClient(deps.writeStdout, modelOverride);
 
     const reviewResult = await deps.runReviewPipeline({
       repoRootPath,
@@ -563,7 +556,7 @@ export async function runCli(
       changedFiles,
       routingConfig: filteredRoutingConfig.config,
       agentInstructions: instructionsResult.instructions,
-      model,
+      llmClient,
       maxCharLimit: DEFAULT_MAX_CHAR_LIMIT,
       concurrency: options.maxParallel,
       retry: DEFAULT_RETRY,

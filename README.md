@@ -1,8 +1,8 @@
 # ai-review 🔍
 
-Multi-agent code review powered by the **Vercel AI SDK**.  
+Multi-agent code review powered by the coding agent you already use — **Claude Code**, **GitHub Copilot CLI**, or **OpenAI Codex CLI**.  
 Run **before creating a PR** (or when reviewing someone else's branch) to get focused AI critique from 5 specialized agents — each looking at your diff through a different lens.  
-Supports OpenAI-compatible endpoints (OpenAI, Groq, OpenRouter, etc.), Anthropic, and Google.
+No API keys, no endpoints: ai-review runs the agent CLI in headless mode and reuses the login you already have there.
 
 ---
 
@@ -13,33 +13,34 @@ Supports OpenAI-compatible endpoints (OpenAI, Groq, OpenRouter, etc.), Anthropic
 | `git`       | Yes      | Diff computation                                                         |
 | `node`      | Yes      | Runtime for the CLI (v20.12+)                                            |
 | `npm`       | Yes      | Package manager                                                          |
-| LLM API key | Yes      | Env var name configured during install (e.g. `OPENAI_API_KEY`)          |
+| Agent CLI   | Yes      | One of `claude`, `copilot`, `codex` — installed and logged in            |
 
 ---
 
 ## Install
 
 ```bash
-npm install -g ai-review
+npm install -g @karol2846/ai-review
 ```
 
-The `npm install -g` step is non-interactive — it only copies bundled agents/skills into `~/.copilot/`. The provider setup wizard runs on the **first invocation of `ai-review`** in an interactive terminal and prompts for:
-1. **Provider kind**: `openai-compatible`, `anthropic`, or `google`
-2. **Model name**: e.g. `gpt-4o-mini` (OpenAI), `llama-3.3-70b-versatile` (Groq), `claude-sonnet-4-6` (Anthropic), `gemini-2.0-flash` (Google)
-3. **API key env var name**: the environment variable that holds your API key (e.g. `OPENAI_API_KEY`)
-4. **Base URL** (openai-compatible only, optional): for Groq, OpenRouter, or self-hosted endpoints
+The `npm install -g` step is non-interactive — it only copies bundled agents/skills into `~/.copilot/`. On the **first invocation of `ai-review`** in an interactive terminal, a one-question setup asks which agent CLI to use (the ones found in your `PATH` are marked as installed), saves the choice to `~/.ai-review/.ai-review-install-provider.json`, and goes straight on with the review.
 
-The wizard writes `~/.ai-review/.ai-review-install-provider.json`. After the wizard saves the config, set the chosen API key env var in your shell and re-run `ai-review`. If `ai-review` is invoked without a TTY (CI, Docker, `npm install --ignore-scripts`) before the config exists, it errors with a message asking you to run it in an interactive terminal first.
+| Provider      | CLI       | How it is called                                                                          |
+|---------------|-----------|-------------------------------------------------------------------------------------------|
+| `claude-code` | `claude`  | `claude -p --no-session-persistence --tools ""` (prompt on stdin)                         |
+| `copilot`     | `copilot` | `copilot --prompt=… --silent --available-tools` — the session it creates is deleted afterwards |
+| `codex`       | `codex`   | `codex exec --ephemeral --sandbox read-only` (prompt on stdin)                            |
 
-To switch provider or model later, delete the config file and re-run `ai-review`:
+Reviews never show up in the agent's own session history: Claude Code and Codex are run with their "don't persist this session" flags, and for Copilot CLI (which has no such flag) ai-review deletes the session it created right after each call. Every call runs in a scratch directory with no tools, so the agent cannot touch your repository.
+
+The model is whatever the agent CLI uses by default. To pick one, add `"model"` to the config file (e.g. `{ "provider": "claude-code", "model": "haiku" }`) or to a repo's `ai-review.json`.
+
+If `ai-review` is invoked without a TTY (CI, Docker) before the config exists, it errors with a message asking you to run it in an interactive terminal first.
+
+To switch provider later, delete the config file and re-run `ai-review`:
 ```bash
 rm ~/.ai-review/.ai-review-install-provider.json
 ai-review
-```
-
-Before running, export the API key you configured (the variable name you chose in step 3):
-```bash
-export AI_REVIEW_API_KEY=sk-...   # or ANTHROPIC_API_KEY, OPENAI_API_KEY, etc.
 ```
 
 ---
@@ -84,7 +85,7 @@ ai-review
    │
   ├─ 2. ANALYZE  (parallel batched calls per file × agent)
    │      Each agent receives: diff + bounded file context
-   │      Vercel AI SDK generateText sends prompt → JSON response
+   │      Agent CLI (claude / copilot / codex) runs headless → JSON response
    │      Response parsed and validated per-record; invalid records dropped
    │
   ├─ 3. AGGREGATE
@@ -251,8 +252,8 @@ ai-review/
 │   ├── defaultConfig.ts       # Default agent-to-glob routing config
 │   ├── repoConfig.ts          # Load + validate + merge per-repo ai-review.json
 │   ├── llmProvider.ts         # LlmProviderError class + error code types
-│   ├── llmClient.ts           # createLanguageModel — Vercel AI SDK factory
-│   ├── llmAdapter.ts          # generateFindings — wraps generateText + response parsing
+│   ├── llmClient.ts           # createLlmClient — runs claude / copilot / codex headless
+│   ├── llmAdapter.ts          # generateFindings — LlmClient.complete + response parsing
 │   ├── responseParser.ts      # parseModelResponse — extracts JSON findings from LLM text
 │   ├── installProviderConfig.ts  # Read/validate ~/.ai-review/.ai-review-install-provider.json
 │   ├── setupWizard.ts        # First-run interactive provider setup
@@ -270,7 +271,7 @@ ai-review/
 
 ## Stack
 
-**LLM**: [Vercel AI SDK](https://sdk.vercel.ai/) (`ai` package) with provider adapters `@ai-sdk/openai`, `@ai-sdk/anthropic`, `@ai-sdk/google`. Uses `generateText` with a structured JSON prompt; findings are extracted and validated by a hand-rolled response parser.
+**LLM**: the agent CLI you already use (Claude Code, GitHub Copilot CLI or OpenAI Codex CLI), spawned in headless mode via `execa`. Each call sends a structured JSON prompt; findings are extracted and validated by a hand-rolled response parser.
 
 Agents are tuned for: **Java 17+, Spring Boot, Spock/Groovy tests, PostgreSQL, MongoDB, SQS/SNS, DDD, REST APIs**.
 

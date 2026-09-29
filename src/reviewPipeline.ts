@@ -1,4 +1,4 @@
-import type { LanguageModel } from "ai";
+import type { LlmClient } from "./llmClient";
 
 import {
   aggregateFindings,
@@ -31,7 +31,7 @@ export interface RunReviewPipelineInput {
   readonly changedFiles?: readonly string[];
   readonly routingConfig: RoutingRuntimeConfig;
   readonly agentInstructions: AgentInstructionsByAgent;
-  readonly model: LanguageModel;
+  readonly llmClient: LlmClient;
   readonly maxCharLimit: number;
   readonly concurrency: number;
   readonly retry: RunnerRetryConfig;
@@ -167,7 +167,7 @@ export async function runReviewPipeline(
   const runnerResult = await runAgentBatches({
     batches: batchesResult.batches,
     agentInstructions: input.agentInstructions,
-    model: input.model,
+    llmClient: input.llmClient,
     concurrency: input.concurrency,
     retry: input.retry,
   });

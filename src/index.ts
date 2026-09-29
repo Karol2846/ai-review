@@ -34,7 +34,7 @@ export {
   agentsToRoutingOverride,
   isCustomAgent,
 } from "./repoConfig";
-export { createLanguageModel } from "./llmClient";
+export { createLlmClient, runCommand, PROVIDER_INFO } from "./llmClient";
 export type {
   AggregatedFinding,
   AggregationDedupStats,
@@ -83,7 +83,14 @@ export type {
 } from "./installProviderConfig";
 
 export type { RepoConfigOverride } from "./repoConfig";
-export type { LlmClientConfig } from "./llmClient";
+export type {
+  LlmClient,
+  LlmClientConfig,
+  CommandInvocation,
+  CommandOutcome,
+  CommandRunner,
+  ProviderInfo,
+} from "./llmClient";
 export type { Finding } from "./findingSchema";
 export type {
   ParsedBatchFindings,

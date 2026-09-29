@@ -1,8 +1,8 @@
 import pMap from "p-map";
-import type { LanguageModel } from "ai";
 
 import type { AgentBatch } from "./batcher";
 import { generateFindings } from "./llmAdapter";
+import type { LlmClient } from "./llmClient";
 import type { Finding } from "./findingSchema";
 import {
   LlmProviderError,
@@ -26,7 +26,7 @@ type AgentInstructionsRecord = Readonly<Record<string, string>>;
 export interface RunAgentBatchesInput {
   readonly batches: readonly AgentBatch[];
   readonly agentInstructions: AgentInstructionsByAgent;
-  readonly model: LanguageModel;
+  readonly llmClient: LlmClient;
   readonly concurrency: number;
   readonly retry: RunnerRetryConfig;
 }
@@ -191,7 +191,7 @@ function validateInput(input: RunAgentBatchesInput): void {
 async function runSingleBatch(
   batch: AgentBatch,
   agentInstructions: AgentInstructionsByAgent,
-  model: LanguageModel,
+  llmClient: LlmClient,
   retry: RunnerRetryConfig
 ): Promise<BatchRunResult> {
   const rawAgentInstruction = readAgentInstruction(agentInstructions, batch.agent);
@@ -222,7 +222,7 @@ async function runSingleBatch(
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      const findings = await generateFindings(model, prompt);
+      const findings = await generateFindings(llmClient, prompt);
       return {
         status: "success",
         batchId: batch.id,
@@ -292,7 +292,7 @@ export async function runAgentBatches(input: RunAgentBatchesInput): Promise<RunA
 
   const results = await pMap(
     input.batches,
-    async (batch) => runSingleBatch(batch, input.agentInstructions, input.model, input.retry),
+    async (batch) => runSingleBatch(batch, input.agentInstructions, input.llmClient, input.retry),
     { concurrency: input.concurrency }
   );
 

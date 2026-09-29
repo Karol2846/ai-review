@@ -24,31 +24,35 @@ Tests use **Vitest** and live under `test/` (not compiled into `dist/`).
 `ai-review` is a TypeScript/Node multi-agent diff reviewer. The four pipeline phases:
 
 1. **Scope** (`src/cli.ts`, `src/git.ts`) — resolves repo root, base branch (auto-detects `origin/HEAD`, falls back to `main`/`master`), merge-base, and changed files.
-2. **Analyze** (`src/reviewPipeline.ts`, `src/router.ts`, `src/routingTypes.ts`, `src/runner.ts`, `src/batcher.ts`, `src/promptBuilder.ts`, `src/contextBuilder.ts`, `src/llmClient.ts`, `src/llmAdapter.ts`) — routes changed files to agents via glob patterns, builds `(file × agent)` task batches, sends diff + bounded file context to the LLM via Vercel AI SDK's `generateText`, parses JSON findings from the response via `src/responseParser.ts`.
+2. **Analyze** (`src/reviewPipeline.ts`, `src/router.ts`, `src/routingTypes.ts`, `src/runner.ts`, `src/batcher.ts`, `src/promptBuilder.ts`, `src/contextBuilder.ts`, `src/llmClient.ts`, `src/llmAdapter.ts`) — routes changed files to agents via glob patterns, builds `(file × agent)` task batches, sends diff + bounded file context to the user's coding-agent CLI (Claude Code / Copilot CLI / Codex) run headless, parses JSON findings from the response via `src/responseParser.ts`.
 3. **Aggregate** (`src/aggregator.ts`) — deduplicates via fingerprint, applies min-severity filter, sorts by severity/file/line.
 4. **Output** (`src/reporter.ts`, `src/annotator.ts`) — `--report` renders colored terminal output; default mode inserts `// TODO [ai-review]` comments into source files; `--clean` removes them.
 
-### LLM integration (Vercel AI SDK)
+### LLM integration (coding-agent CLIs)
 
-`src/llmClient.ts` — `createLanguageModel(config: LlmClientConfig): LanguageModel`. Supports three provider kinds:
-- `openai-compatible` (`@ai-sdk/openai`) — works with OpenAI, Groq, OpenRouter, or any OpenAI-compatible endpoint; optional `baseURL`.
-- `anthropic` (`@ai-sdk/anthropic`)
-- `google` (`@ai-sdk/google`)
+There are no API keys or HTTP clients: every prompt is delegated to a coding-agent CLI the user already has installed and logged in, spawned via `execa`.
 
-`src/llmAdapter.ts` — `generateFindings(model, prompt): Promise<Finding[]>`. Calls Vercel AI SDK's `generateText` (with `maxRetries: 0`), then parses the JSON response via `src/responseParser.ts`. Maps SDK errors (`APICallError`, `AbortError`, etc.) to `LlmProviderError` codes.
+`src/llmClient.ts` — `createLlmClient(config: LlmClientConfig, run?: CommandRunner): LlmClient`, where `LlmClient` is `{ provider, complete(prompt): Promise<string> }`. `PROVIDER_KINDS` = `claude-code | copilot | codex`; `PROVIDER_INFO` holds each one's label, command, install hint and login hint. The `CommandRunner` parameter (default `runCommand`, execa with a 5-minute timeout) is the test seam. Every call runs in a scratch cwd with **no tools**, and must never leave a session in the agent's history:
+- `claude-code` — `claude -p --output-format json --no-session-persistence --strict-mcp-config --setting-sources user --disable-slash-commands --system-prompt … [--model m] --tools ""`, prompt on stdin; the reply is the `result` field of the JSON (`is_error: true` → error).
+- `codex` — `codex exec --ephemeral --sandbox read-only --skip-git-repo-check --output-last-message <tmpfile> [--model m] -`, prompt on stdin; the reply is read from the tmpfile.
+- `copilot` — `copilot --prompt=… --silent --session-id=<uuid> … --available-tools` (no flag to skip persistence), then `<COPILOT_HOME or ~/.copilot>/session-state/<uuid>` and its lock file are deleted in a `finally`.
 
-`src/llmProvider.ts` — error types only: `LlmProviderError` class and `LlmProviderErrorCode` union. No provider interface or `sendPrompt` method.
+Failures map to `LlmProviderError` codes: `ENOENT` → `COMMAND_NOT_FOUND` (with install hint), timeout → `TIMEOUT`, and non-zero exit output is classified by regex into `NOT_AUTHENTICATED` (with login hint), `RATE_LIMITED`, `SERVICE_UNAVAILABLE`, `NETWORK_ERROR`, or `COMMAND_FAILED`.
 
-Provider is selected by an **interactive setup wizard** in `src/setupWizard.ts`, triggered on first CLI run when no config is found. Config is stored at `~/.ai-review/.ai-review-install-provider.json` (path defined by `INSTALL_PROVIDER_CONFIG_DIR` in `src/installProviderConfig.ts`). `scripts/postinstall.js` is non-interactive — it only copies `agents/` and `skill/` into `~/.copilot/`. At runtime `src/cli.ts` reads the config via `loadInstallProviderConfig`; if missing and stdin is a TTY, the wizard runs, saves config, and returns `SETUP_COMPLETED` (sentinel) — the CLI prints instructions to set the API key env var and re-run; if missing and non-TTY (CI, Docker, `--ignore-scripts`), the CLI errors out.
+`src/llmAdapter.ts` — `generateFindings(client, prompt): Promise<Finding[]>`. Calls `client.complete`, wraps non-`LlmProviderError` failures as `COMMAND_FAILED`, then parses the reply via `src/responseParser.ts`.
+
+`src/llmProvider.ts` — error types only: `LlmProviderError` class and `LlmProviderErrorCode` union.
+
+Provider is selected by an **interactive setup wizard** in `src/setupWizard.ts`, triggered on first CLI run when no valid config is found. It asks a single question — which agent CLI — marking those found in `PATH` (`<cmd> --version`) as installed. Config (`{ provider, model? }`) is stored at `~/.ai-review/.ai-review-install-provider.json` (path defined by `INSTALL_PROVIDER_CONFIG_DIR` in `src/installProviderConfig.ts`); `model` is optional and omitted means the CLI's default model. `scripts/postinstall.js` is non-interactive — it only copies `agents/` and `skill/` into `~/.copilot/`. At runtime `src/cli.ts` reads the config via `loadInstallProviderConfig` inside `resolveLlmClient`; if missing/invalid (including configs from the old API-key era) and stdin is a TTY, the wizard runs, saves config, and the review continues immediately; if non-TTY (CI, Docker), the CLI errors out.
 
 ### Routing and configuration
 
 Changed files are matched to agents by glob patterns via `src/router.ts` (`routeFilesToAgents`, uses `micromatch`). Types live in `src/routingTypes.ts` (`RoutingRuntimeConfig`, `AgentGlobsMap`, `AgentName`, `CustomAgentsMap`). Default agent-to-file-glob routing is in `src/defaultConfig.ts`. Per-repo overrides via `ai-review.json` in the repo root are parsed by `src/repoConfig.ts` (`parseRepoConfig` → `RepoConfigOverride { model, agents, exclude }`). Unknown keys or agent names cause a hard-fail. A future phase may add a `severity` section.
 
-- **`model`** (phase 2) — a per-repo model override: a plain **string** naming the model to use for this repo (`UserModelConfigOverride = string`). Only the model name is overridable per repo; provider, API-key env var, and `baseURL` always come from the install config (re-run the install wizard to change those). Applied by `mergeProviderConfig` (`src/installProviderConfig.ts`), which copies the install config and swaps in the model name (`{ ...base, model }`), then in `src/cli.ts` via `resolveLanguageModel(writeStdout, modelOverride)`. A non-string or empty `model` hard-fails. Example:
+- **`model`** (phase 2) — a per-repo model override: a plain **string** naming the model to use for this repo (`UserModelConfigOverride = string`), passed to the agent CLI's `--model`. Only the model name is overridable per repo; the provider always comes from the install config (re-run the setup wizard to change it). Applied by `mergeProviderConfig` (`src/installProviderConfig.ts`), which copies the install config and swaps in the model name (`{ ...base, model }`), then in `src/cli.ts` via `resolveLlmClient(writeStdout, modelOverride)`. A non-string or empty `model` hard-fails. Example:
 
   ```json
-  { "model": "claude-sonnet-4-6" }
+  { "model": "haiku" }
   ```
 
 - **`agents`** (phase 3) — unified section for **both** overriding built-in agents and defining custom ones. Two modes distinguished by the agent name:
@@ -97,7 +101,7 @@ Inserted comments must contain `[ai-review]`. Cleanup (`--clean`) removes every 
 ## Key conventions
 
 - **Diff-first scope**: review always operates on `merge-base(origin/<base>, HEAD)..HEAD`, never the whole repo.
-- **Structured output via prompt + parser**: `generateText` sends a JSON-format instruction; `src/responseParser.ts` extracts and validates the response. Non-conforming records are dropped silently. Transient LLM errors are retried by `src/runner.ts` (not by the SDK — `generateText` runs with `maxRetries: 0`).
+- **Structured output via prompt + parser**: the prompt carries a JSON-format instruction; `src/responseParser.ts` extracts and validates the agent CLI's reply. Non-conforming records are dropped silently. Transient LLM errors are retried by `src/runner.ts`.
 - **`CliRuntimeDependencies` interface** (`src/cli.ts`): all I/O and side-effectful operations are injected through this interface, making `runCli` fully unit-testable without mocking globals.
 - **Transient error retry**: `src/runner.ts` retries on `LlmProviderError` codes marked transient in `src/llmProvider.ts` (`COMMAND_FAILED`, `RATE_LIMITED`, `NETWORK_ERROR`, `TIMEOUT`, `SERVICE_UNAVAILABLE`).
 - **CLI args module**: `src/cliArgs.ts` (`parseCliArgs`, `formatCliUsage`, `CliArgsError`) — argument parsing is fully extracted from the CLI entrypoint.
