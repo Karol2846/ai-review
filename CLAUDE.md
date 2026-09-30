@@ -15,6 +15,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | Install globally         | `npm run build && npm install -g .`                                                     |
 | Run with terminal report | `ai-review --report`                                                                    |
 | Raw JSON output          | `ai-review --json`                                                                      |
+| Review only commits      | `ai-review --committed-only`                                                            |
 | Remove inserted comments | `ai-review --clean`                                                                     |
 
 Tests use **Vitest** and live under `test/` (not compiled into `dist/`).
@@ -23,7 +24,7 @@ Tests use **Vitest** and live under `test/` (not compiled into `dist/`).
 
 `ai-review` is a TypeScript/Node multi-agent diff reviewer. The four pipeline phases:
 
-1. **Scope** (`src/cli.ts`, `src/git.ts`) — resolves repo root, base branch (auto-detects `origin/HEAD`, falls back to `main`/`master`), merge-base, and changed files.
+1. **Scope** (`src/cli.ts`, `src/git.ts`) — resolves repo root, base branch (auto-detects `origin/HEAD`, falls back to `main`/`master`), merge-base, and changed files. The `ReviewScope` (`src/git.ts`) decides which changes count: `working-tree` (default) diffs the merge-base against the working tree and adds untracked non-ignored files; `committed` (`--committed-only`) diffs `merge-base..HEAD`. `src/contextBuilder.ts` reads file content from the same snapshot as the diff (working tree, or `git show HEAD:<path>` for `committed`) and synthesizes a whole-file addition diff for untracked files.
 2. **Analyze** (`src/reviewPipeline.ts`, `src/router.ts`, `src/routingTypes.ts`, `src/runner.ts`, `src/batcher.ts`, `src/promptBuilder.ts`, `src/contextBuilder.ts`, `src/llmClient.ts`, `src/llmAdapter.ts`) — routes changed files to agents via glob patterns, builds `(file × agent)` task batches, sends diff + bounded file context to the user's coding-agent CLI (Claude Code / Copilot CLI / Codex) run headless, parses JSON findings from the response via `src/responseParser.ts`.
 3. **Aggregate** (`src/aggregator.ts`) — deduplicates via fingerprint, applies min-severity filter, sorts by severity/file/line.
 4. **Output** (`src/reporter.ts`, `src/annotator.ts`) — `--report` renders colored terminal output; default mode inserts `// TODO [ai-review]` comments into source files; `--clean` removes them.
@@ -100,7 +101,7 @@ Inserted comments must contain `[ai-review]`. Cleanup (`--clean`) removes every 
 
 ## Key conventions
 
-- **Diff-first scope**: review always operates on `merge-base(origin/<base>, HEAD)..HEAD`, never the whole repo.
+- **Diff-first scope**: review always operates on changes since `merge-base(origin/<base>, HEAD)` — working tree by default, `..HEAD` with `--committed-only` — never the whole repo.
 - **Structured output via prompt + parser**: the prompt carries a JSON-format instruction; `src/responseParser.ts` extracts and validates the agent CLI's reply. Non-conforming records are dropped silently. Transient LLM errors are retried by `src/runner.ts`.
 - **`CliRuntimeDependencies` interface** (`src/cli.ts`): all I/O and side-effectful operations are injected through this interface, making `runCli` fully unit-testable without mocking globals.
 - **Transient error retry**: `src/runner.ts` retries on `LlmProviderError` codes marked transient in `src/llmProvider.ts` (`COMMAND_FAILED`, `RATE_LIMITED`, `NETWORK_ERROR`, `TIMEOUT`, `SERVICE_UNAVAILABLE`).

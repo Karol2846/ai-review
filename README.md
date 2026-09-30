@@ -80,8 +80,9 @@ ai-review --clean                  # remove TODO comments
 ai-review
   │
   ├─ 1. SCOPE
-   │      git diff $(merge-base HEAD origin/main)..HEAD
-   │      → list of changed files
+   │      git diff $(merge-base HEAD origin/main)   (commits + uncommitted)
+   │      + untracked files (git ls-files --others --exclude-standard)
+   │      → list of changed files   (--committed-only: ..HEAD, commits only)
    │
   ├─ 2. ANALYZE  (parallel batched calls per file × agent)
    │      Each agent receives: diff + bounded file context
@@ -154,6 +155,7 @@ Comment syntax per file type:
 ```
 -h, --help              Show usage
 --base <branch>         Base branch for diff (default: auto-detect)
+--committed-only        Review only commits (default: also uncommitted and untracked changes)
 --agents <list>         Comma-separated agent list (default: all)
 --exclude-agents <list> Comma-separated agents to skip (default: none)
 --severity <min>        Minimum severity: critical, warning, info (default: info)
@@ -176,6 +178,10 @@ ai-review --severity warning       # skip info-level noise
 ai-review --report                 # optionally also show terminal report
 ai-review --clean                  # remove markers before push
 ```
+
+By default the review covers everything since the merge-base: commits, staged and unstaged edits,
+and new untracked files — so you can review before committing. Pass `--committed-only` to review
+just the commits (`merge-base..HEAD`).
 
 ### Reviewing someone else's PR
 ```bash

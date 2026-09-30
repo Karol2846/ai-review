@@ -18,7 +18,7 @@ import {readFileSync} from "node:fs";
 import {CliArgsError, type CliOptions, formatCliUsage, parseCliArgs} from "./cliArgs";
 import {defaultRoutingConfig} from "./defaultConfig";
 import {runInit} from "./init";
-import {getChangedFiles, getMergeBase} from "./git";
+import {getChangedFiles, getMergeBase, type ReviewScope} from "./git";
 import {
   loadInstallProviderConfig,
   getInstallProviderConfigPath,
@@ -50,7 +50,7 @@ export interface CliRuntimeDependencies {
   readonly detectBaseBranch: () => Promise<string>;
   readonly getMergeBase: (baseBranch: string) => Promise<string>;
   readonly getHeadSha: () => Promise<string>;
-  readonly getChangedFiles: (mergeBase: string) => Promise<string[]>;
+  readonly getChangedFiles: (mergeBase: string, scope: ReviewScope) => Promise<string[]>;
   readonly loadAgentInstructions: (
     repoRootPath: string,
     agentNames: readonly string[],
@@ -386,11 +386,13 @@ export async function runCli(
     const baseBranch = options.baseBranch ?? (await deps.detectBaseBranch());
     const mergeBase = await deps.getMergeBase(baseBranch);
     const headSha = await deps.getHeadSha();
-    let changedFiles = await deps.getChangedFiles(mergeBase);
+    const scope: ReviewScope = options.committedOnly ? "committed" : "working-tree";
+    let changedFiles = await deps.getChangedFiles(mergeBase, scope);
 
     writeDebug(options.debug, `base branch resolved to "${baseBranch}" (origin ref: ${toOriginRef(baseBranch)})`, deps.writeStderr);
     writeDebug(options.debug, `merge-base = ${mergeBase}`, deps.writeStderr);
     writeDebug(options.debug, `HEAD = ${headSha}`, deps.writeStderr);
+    writeDebug(options.debug, `review scope = ${scope}`, deps.writeStderr);
 
     let routingConfig: RoutingRuntimeConfig;
     let modelOverride: UserModelConfigOverride | null = null;
@@ -500,7 +502,11 @@ export async function runCli(
     writeDebug(options.debug, `changed files: ${changedFiles.length}`, deps.writeStderr);
 
     if (changedFiles.length === 0) {
-      writeDebug(options.debug, `reproduce locally: git diff --name-only ${mergeBase}..HEAD`, deps.writeStderr);
+      const reproduceCommand =
+        scope === "committed"
+          ? `git diff --name-only ${mergeBase}..HEAD`
+          : `git diff --name-only ${mergeBase} && git ls-files --others --exclude-standard`;
+      writeDebug(options.debug, `reproduce locally: ${reproduceCommand}`, deps.writeStderr);
       printDebugWarnings(options.debug, debugWarnings, deps.writeStderr);
       if (options.json) {
         deps.writeStdout("[]");
@@ -554,6 +560,7 @@ export async function runCli(
       repoRootPath,
       mergeBase,
       changedFiles,
+      scope,
       routingConfig: filteredRoutingConfig.config,
       agentInstructions: instructionsResult.instructions,
       llmClient,

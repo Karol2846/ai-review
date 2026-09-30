@@ -17,6 +17,7 @@ import type {
   RunReviewPipelineInput,
   RunReviewPipelineResult,
 } from "../src/reviewPipeline";
+import type { ReviewScope } from "../src/git";
 import type { RoutingRuntimeConfig } from "../src/routingTypes";
 
 const installProviderConfigPath = getInstallProviderConfigPath(process.cwd());
@@ -102,7 +103,7 @@ interface RuntimeTestDeps {
   readonly detectBaseBranch: ReturnType<typeof vi.fn<() => Promise<string>>>;
   readonly getMergeBase: ReturnType<typeof vi.fn<(baseBranch: string) => Promise<string>>>;
   readonly getHeadSha: ReturnType<typeof vi.fn<() => Promise<string>>>;
-  readonly getChangedFiles: ReturnType<typeof vi.fn<(mergeBase: string) => Promise<string[]>>>;
+  readonly getChangedFiles: ReturnType<typeof vi.fn<(mergeBase: string, scope: ReviewScope) => Promise<string[]>>>;
   readonly loadAgentInstructions: ReturnType<
     typeof vi.fn<
       (
@@ -128,7 +129,7 @@ function createRuntimeDeps(): RuntimeTestDeps {
   const detectBaseBranch = vi.fn<() => Promise<string>>().mockResolvedValue("main");
   const getMergeBase = vi.fn<(baseBranch: string) => Promise<string>>().mockResolvedValue("merge-base");
   const getHeadSha = vi.fn<() => Promise<string>>().mockResolvedValue("head-sha-abc123");
-  const getChangedFiles = vi.fn<(mergeBase: string) => Promise<string[]>>().mockResolvedValue([
+  const getChangedFiles = vi.fn<(mergeBase: string, scope: ReviewScope) => Promise<string[]>>().mockResolvedValue([
     "src/service.ts",
   ]);
   const loadAgentInstructions = vi
@@ -259,6 +260,16 @@ describe("runCli runtime flow", () => {
     rmSync(repoWithoutAgents, { recursive: true, force: true });
   });
 
+  it("--committed-only restricts changed files and the pipeline to the committed scope", async () => {
+    const deps = createRuntimeDeps();
+
+    const exitCode = await runCli(["--json", "--committed-only"], deps.overrides);
+
+    expect(exitCode).toBe(0);
+    expect(deps.getChangedFiles).toHaveBeenCalledWith("merge-base", "committed");
+    expect(deps.runReviewPipeline).toHaveBeenCalledWith(expect.objectContaining({ scope: "committed" }));
+  });
+
   it("applies --base, --exclude, --agents, --severity, --parallel and passes model to pipeline", async () => {
     const deps = createRuntimeDeps();
     deps.getChangedFiles.mockResolvedValue(["src/service.ts", "README.md", "scripts/setup.sh"]);
@@ -296,9 +307,11 @@ describe("runCli runtime flow", () => {
     expect(exitCode).toBe(0);
     expect(deps.detectBaseBranch).not.toHaveBeenCalled();
     expect(deps.getMergeBase).toHaveBeenCalledWith("develop");
+    expect(deps.getChangedFiles).toHaveBeenCalledWith("merge-base", "working-tree");
     expect(deps.runReviewPipeline).toHaveBeenCalledWith(
       expect.objectContaining({
         mergeBase: "merge-base",
+        scope: "working-tree",
         changedFiles: ["src/service.ts"],
         minSeverity: "warning",
         concurrency: 3,

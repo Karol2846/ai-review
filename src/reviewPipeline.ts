@@ -13,6 +13,7 @@ import {
   type ContextBuilderWarningCode,
 } from "./contextBuilder";
 import type { Finding } from "./findingSchema";
+import type { ReviewScope } from "./git";
 import { routeFilesToAgents } from "./router";
 import type { AgentName, RoutingRuntimeConfig } from "./routingTypes";
 import {
@@ -29,6 +30,8 @@ export interface RunReviewPipelineInput {
   readonly repoRootPath: string;
   readonly mergeBase: string;
   readonly changedFiles?: readonly string[];
+  /** Which changes to review; defaults to the working tree (commits + uncommitted + untracked). */
+  readonly scope?: ReviewScope;
   readonly routingConfig: RoutingRuntimeConfig;
   readonly agentInstructions: AgentInstructionsByAgent;
   readonly llmClient: LlmClient;
@@ -146,7 +149,8 @@ export async function runReviewPipeline(
   const contextResult = await buildFileContexts(
     input.repoRootPath,
     input.mergeBase,
-    input.changedFiles
+    input.changedFiles,
+    input.scope
   );
   const contextFilePaths = contextResult.contexts.map((context) => context.filePath);
 
