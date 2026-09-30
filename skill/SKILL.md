@@ -12,7 +12,7 @@ No CLI provider flags exist — runtime uses the saved config.
 
 ## How It Works
 
-1. **Scope**: Determines changed files via `git diff` against the base branch (merge-base).
+1. **Scope**: Determines changed files via `git diff` against the base branch (merge-base) — commits plus uncommitted and untracked changes by default, or only commits with `--committed-only`.
 2. **Analyze**: Routes files to selected agents and runs parallel agent prompts in the Node runtime.
 3. **Aggregate**: Collects findings, applies severity filtering, deduplicates by fingerprint, and sorts.
 4. **Output**: Annotates source files with TODO comments by default, and optionally prints a terminal report (`--report`).
@@ -25,6 +25,7 @@ ai-review                              # annotate current branch vs base (defaul
 ai-review --report                     # also print terminal report
 ai-review --agents "tester,ddd-reviewer"  # only specific agents
 ai-review --base develop               # compare against specific branch
+ai-review --committed-only             # ignore uncommitted/untracked changes
 ai-review --clean                      # remove previous [ai-review] TODOs
 ai-review --severity warning           # only warning+critical
 ai-review --json                       # raw JSON output

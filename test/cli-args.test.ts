@@ -21,6 +21,7 @@ describe("parseCliArgs", () => {
       force: false,
       minSeverity: "info",
       maxParallel: 5,
+      committedOnly: false,
     });
     expect(result.agents).toBeUndefined();
     expect(result.command).toBeUndefined();
@@ -42,6 +43,7 @@ describe("parseCliArgs", () => {
       "  **/*.generated.ts , vendor/** ",
       "--parallel",
       "3",
+      "--committed-only",
       "-h",
     ]);
 
@@ -58,6 +60,7 @@ describe("parseCliArgs", () => {
       minSeverity: "warning",
       exclude: ["**/*.generated.ts", "vendor/**"],
       maxParallel: 3,
+      committedOnly: true,
     });
   });
 

@@ -25,6 +25,8 @@ export interface CliOptions {
   /** Agent names from `--exclude-agents` to skip for this run. Omitted when absent. */
   readonly excludeAgents?: readonly string[];
   readonly maxParallel: number;
+  /** `true` when `--committed-only` is passed: review only commits, ignoring uncommitted and untracked changes. */
+  readonly committedOnly: boolean;
 }
 
 export class CliArgsError extends Error {
@@ -101,6 +103,7 @@ export function formatCliUsage(): string {
     "",
     "Options:",
     "  --base <branch>    Base branch for diff (default: auto-detect)",
+    "  --committed-only   Review only commits (default: also uncommitted and untracked changes)",
     "  --report           Print terminal report (annotations are default)",
     "  --clean            Remove previous [ai-review] TODO comments",
     "  --agents <list>          Comma-separated agent list (default: all)",
@@ -156,6 +159,7 @@ export function parseCliArgs(argv: readonly string[]): CliOptions {
         json: { type: "boolean" },
         debug: { type: "boolean" },
         force: { type: "boolean" },
+        "committed-only": { type: "boolean" },
         base: { type: "string" },
         agents: { type: "string" },
         "exclude-agents": { type: "string" },
@@ -226,5 +230,6 @@ export function parseCliArgs(argv: readonly string[]): CliOptions {
     minSeverity,
     ...(exclude !== undefined ? { exclude } : {}),
     maxParallel,
+    committedOnly: readBooleanFlag((parsedValues as Record<string, unknown>)["committed-only"]),
   };
 }

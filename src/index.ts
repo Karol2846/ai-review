@@ -1,4 +1,5 @@
-export { getChangedFiles, getFileDiff, getMergeBase, GitServiceError } from "./git";
+export { DEFAULT_REVIEW_SCOPE, getChangedFiles, getFileDiff, getMergeBase, GitServiceError, readFileAtHead } from "./git";
+export type { ReviewScope } from "./git";
 export {
   LlmProviderError,
   isTransientLlmProviderError,
@@ -6,7 +7,7 @@ export {
 } from "./llmProvider";
 export { defaultRoutingConfig } from "./defaultConfig";
 export { routeFilesToAgents } from "./router";
-export { buildFileContexts } from "./contextBuilder";
+export { buildFileContexts, buildNewFileDiff } from "./contextBuilder";
 export { createBatches } from "./batcher";
 export { buildAgentBatchPrompt } from "./promptBuilder";
 export { runAgentBatches } from "./runner";

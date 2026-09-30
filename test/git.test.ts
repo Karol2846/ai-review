@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { execa } from "execa";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { getChangedFiles, getFileDiff, GitServiceError } from "../src/git";
+import { getChangedFiles, getFileDiff, GitServiceError, readFileAtHead } from "../src/git";
 
 const FIXTURES_ROOT = join(process.cwd(), ".git-fixtures");
 
@@ -85,6 +85,46 @@ describe("git service local integration", () => {
       expect(diff).toContain("-export const value = 1;");
       expect(diff).toContain("+export const value = 2;");
       expect(diff).toContain("+export const added = true;");
+    } finally {
+      process.chdir(previousCwd);
+    }
+  });
+
+  it("covers uncommitted and untracked changes by default, and only commits in committed scope", async () => {
+    const repoRoot = recreateFixtureDir("working-tree-scope");
+
+    await runGit(repoRoot, ["init"]);
+    await runGit(repoRoot, ["config", "user.name", "Smoke Tester"]);
+    await runGit(repoRoot, ["config", "user.email", "smoke.tester@example.com"]);
+
+    writeFileSync(join(repoRoot, "committed.ts"), "export const a = 1;\n", "utf8");
+    writeFileSync(join(repoRoot, ".gitignore"), "ignored.ts\n", "utf8");
+    await runGit(repoRoot, ["add", "."]);
+    await runGit(repoRoot, ["commit", "-m", "initial commit"]);
+    const mergeBase = (await runGit(repoRoot, ["rev-parse", "HEAD"])).trim();
+
+    writeFileSync(join(repoRoot, "committed.ts"), "export const a = 2;\n", "utf8");
+    await runGit(repoRoot, ["commit", "-am", "change a"]);
+
+    writeFileSync(join(repoRoot, "committed.ts"), "export const a = 3;\n", "utf8");
+    writeFileSync(join(repoRoot, "staged.ts"), "export const s = 1;\n", "utf8");
+    await runGit(repoRoot, ["add", "staged.ts"]);
+    mkdirSync(join(repoRoot, "sub"), { recursive: true });
+    writeFileSync(join(repoRoot, "sub", "untracked.ts"), "export const u = 1;\n", "utf8");
+    writeFileSync(join(repoRoot, "ignored.ts"), "export const i = 1;\n", "utf8");
+
+    const previousCwd = process.cwd();
+    process.chdir(repoRoot);
+
+    try {
+      expect((await getChangedFiles(mergeBase)).sort()).toEqual(["committed.ts", "staged.ts", "sub/untracked.ts"]);
+      expect(await getFileDiff(mergeBase, "committed.ts")).toContain("+export const a = 3;");
+
+      expect(await getChangedFiles(mergeBase, "committed")).toEqual(["committed.ts"]);
+      expect(await getFileDiff(mergeBase, "committed.ts", "committed")).toContain("+export const a = 2;");
+
+      expect(await readFileAtHead("committed.ts")).toBe("export const a = 2;\n");
+      expect(await readFileAtHead("staged.ts")).toBeUndefined();
     } finally {
       process.chdir(previousCwd);
     }
