@@ -13,6 +13,7 @@ import {
   type ContextBuilderWarningCode,
 } from "./contextBuilder";
 import type { Finding } from "./findingSchema";
+import { validateFindings, type DroppedFinding, type FindingValidationCode } from "./findingValidator";
 import type { ReviewScope } from "./git";
 import { numberLines } from "./promptBuilder";
 import { routeFilesToAgents } from "./router";
@@ -49,9 +50,12 @@ export interface ParsedBatchFindings {
   readonly findings: readonly Finding[];
 }
 
-export type ReviewPipelineWarningStage = "context" | "runner";
+export type ReviewPipelineWarningStage = "context" | "runner" | "validation";
 export type ReviewPipelineWarningLevel = "warning" | "error";
-export type ReviewPipelineWarningCode = ContextBuilderWarningCode | RunnerFailureCode;
+export type ReviewPipelineWarningCode =
+  | ContextBuilderWarningCode
+  | RunnerFailureCode
+  | FindingValidationCode;
 
 export interface ReviewPipelineWarning {
   readonly stage: ReviewPipelineWarningStage;
@@ -71,6 +75,8 @@ export interface ReviewPipelineMetadata {
   readonly batchCount: number;
   readonly batchCountByAgent: Readonly<Record<string, number>>;
   readonly parsedBatchCount: number;
+  /** Findings dropped because they point at unknown files, missing lines, or unchanged code. */
+  readonly droppedFindingCount: number;
   readonly failedBatchCount: number;
   readonly failedBatches: readonly BatchRunFailure[];
   readonly runner: RunnerSummary;
@@ -136,6 +142,17 @@ function mapRunnerFailure(failure: BatchRunFailure): ReviewPipelineWarning {
   };
 }
 
+function mapDroppedFinding(dropped: DroppedFinding): ReviewPipelineWarning {
+  return {
+    stage: "validation",
+    level: "warning",
+    code: dropped.code,
+    message: dropped.message,
+    filePath: dropped.finding.file,
+    agent: dropped.finding.agent,
+  };
+}
+
 function toBatchFindings(success: BatchRunSuccess): ParsedBatchFindings {
   return {
     batchId: success.batchId,
@@ -177,7 +194,13 @@ export async function runReviewPipeline(
     retry: input.retry,
   });
 
-  const parsedBatches = runnerResult.successes.map(toBatchFindings);
+  const droppedFindings: DroppedFinding[] = [];
+  const parsedBatches = runnerResult.successes.map((success) => {
+    const batch = toBatchFindings(success);
+    const validation = validateFindings(batch.findings, contextResult.contexts);
+    droppedFindings.push(...validation.dropped);
+    return { ...batch, findings: validation.findings };
+  });
 
   const aggregationResult = aggregateFindings({
     batches: parsedBatches.map((batch) => batch.findings),
@@ -187,6 +210,7 @@ export async function runReviewPipeline(
   const warnings: ReviewPipelineWarning[] = [
     ...contextResult.warnings.map(mapContextWarning),
     ...runnerResult.failures.map(mapRunnerFailure),
+    ...droppedFindings.map(mapDroppedFinding),
   ];
 
   return {
@@ -200,6 +224,7 @@ export async function runReviewPipeline(
       batchCount: batchesResult.batches.length,
       batchCountByAgent: countBatchesByAgent(batchesResult.batches),
       parsedBatchCount: parsedBatches.length,
+      droppedFindingCount: droppedFindings.length,
       failedBatchCount: runnerResult.failures.length,
       failedBatches: runnerResult.failures,
       runner: runnerResult.summary,

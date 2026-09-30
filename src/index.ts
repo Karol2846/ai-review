@@ -10,6 +10,18 @@ export { routeFilesToAgents } from "./router";
 export { buildFileContexts, buildNewFileDiff } from "./contextBuilder";
 export { createBatches } from "./batcher";
 export { buildAgentBatchPrompt, numberLines } from "./promptBuilder";
+export {
+  DEFAULT_DIFF_LINE_TOLERANCE,
+  parseChangedLineRanges,
+  validateFindings,
+} from "./findingValidator";
+export type {
+  DroppedFinding,
+  FindingValidationCode,
+  FindingValidationContext,
+  LineRange,
+  ValidateFindingsResult,
+} from "./findingValidator";
 export { runAgentBatches } from "./runner";
 export { aggregateFindings, buildFindingFingerprint, isFindingSeverity } from "./aggregator";
 export { runReviewPipeline } from "./reviewPipeline";
