@@ -204,6 +204,7 @@ describe("runReviewPipeline (smoke)", () => {
     expect(result.metadata.failedBatchCount).toBe(0);
     expect(result.metadata.batchCount).toBe(2);
     expect(result.metadata.contextWarningCount).toBe(1);
+    expect(result.batches[0]?.chunks[0]?.fullContent).toMatch(/^1\| /u);
     expect(result.warnings).toEqual([
       expect.objectContaining({
         stage: "context",

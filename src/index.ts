@@ -9,7 +9,7 @@ export { defaultRoutingConfig } from "./defaultConfig";
 export { routeFilesToAgents } from "./router";
 export { buildFileContexts, buildNewFileDiff } from "./contextBuilder";
 export { createBatches } from "./batcher";
-export { buildAgentBatchPrompt } from "./promptBuilder";
+export { buildAgentBatchPrompt, numberLines } from "./promptBuilder";
 export { runAgentBatches } from "./runner";
 export { aggregateFindings, buildFindingFingerprint, isFindingSeverity } from "./aggregator";
 export { runReviewPipeline } from "./reviewPipeline";

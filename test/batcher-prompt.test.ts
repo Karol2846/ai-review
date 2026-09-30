@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createBatches, type AgentBatch, type FileContext } from "../src/batcher";
-import { buildAgentBatchPrompt } from "../src/promptBuilder";
+import { buildAgentBatchPrompt, numberLines } from "../src/promptBuilder";
 
 const TEST_AGENT = "architect";
 
@@ -55,6 +55,23 @@ describe("createBatches", () => {
     expect(result.batches.every((batch) => batch.estimatedChars <= 500)).toBe(true);
   });
 
+  it("cuts chunks at line boundaries when a newline fits in the budget", () => {
+    const filePath = "src/app/Lines.ts";
+    const fullContent = "const someLongerValueName = 1;\n".repeat(60);
+    const routedFiles = new Map<string, readonly string[]>([[TEST_AGENT, [filePath]]]);
+    const fileContexts: Record<string, FileContext> = {
+      [filePath]: { fullContent, gitDiff: "@@ -1 +1 @@\n+x\n" },
+    };
+
+    const chunks = createBatches(routedFiles, fileContexts, 500).batches.flatMap((batch) => batch.chunks);
+
+    expect(chunks.length).toBeGreaterThan(1);
+    for (const chunk of chunks) {
+      expect(chunk.fullContent === "" || chunk.fullContent.endsWith("\n")).toBe(true);
+    }
+    expect(chunks.map((chunk) => chunk.fullContent).join("")).toBe(fullContent);
+  });
+
   it("throws when maxCharLimit is invalid", () => {
     const routedFiles = new Map<string, readonly string[]>([[TEST_AGENT, ["src/app/Small.ts"]]]);
     const fileContexts = createFixtureContextByPath();
@@ -97,6 +114,23 @@ function createPromptBatch(): AgentBatch {
   return createBatches(routedFiles, fileContexts, 700).batches[0]!;
 }
 
+describe("numberLines", () => {
+  it("prefixes each line with a right-aligned 1-based number and keeps the trailing newline", () => {
+    const content = Array.from({ length: 10 }, (_, i) => `line ${i + 1}`).join("\n") + "\n";
+
+    const numbered = numberLines(content).split("\n");
+
+    expect(numbered[0]).toBe(" 1| line 1");
+    expect(numbered[9]).toBe("10| line 10");
+    expect(numbered[10]).toBe("");
+  });
+
+  it("normalizes CRLF, handles no trailing newline, and leaves empty content untouched", () => {
+    expect(numberLines("a\r\nb")).toBe("1| a\n2| b");
+    expect(numberLines("")).toBe("");
+  });
+});
+
 describe("buildAgentBatchPrompt", () => {
   it("contains required sections and tokens", () => {
     const prompt = buildAgentBatchPrompt({
@@ -112,6 +146,8 @@ describe("buildAgentBatchPrompt", () => {
     expect(prompt).toContain("### OUTPUT_REQUIREMENTS");
     expect(prompt).toContain("Return ONLY a valid JSON array.");
     expect(prompt).toContain(`Every finding must include "agent":"${TEST_AGENT}".`);
+    expect(prompt).toContain("prefixed with its 1-based line number");
+    expect(prompt).toContain('Ignore existing comments that contain "[ai-review]"');
   });
 
   it('sanitizes delimiter collisions from "### " to "##\\# "', () => {
