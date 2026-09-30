@@ -285,4 +285,58 @@ describe("runReviewPipeline (smoke)", () => {
       )
     ).toBe(true);
   });
+
+  it("drops findings outside the reviewed diff and reports them as validation warnings", async () => {
+    const fullContent = Array.from({ length: 30 }, (_, i) => `const v${i + 1} = ${i + 1};`).join("\n") + "\n";
+    buildFileContextsMock.mockResolvedValue({
+      contexts: [
+        {
+          filePath: "src/service.ts",
+          fullContent,
+          gitDiff: "@@ -2,1 +2,1 @@\n-const v2 = 0;\n+const v2 = 2;\n",
+        },
+      ],
+      warnings: [],
+    } satisfies BuildFileContextsResult);
+
+    const base: Finding = {
+      file: "src/service.ts",
+      line: 2,
+      agent: "tester",
+      severity: "warning",
+      category: "edge-case",
+      message: "Changed constant is untested.",
+      suggestion: "Add a test.",
+    };
+    runAgentBatchesMock.mockImplementation(async (input: RunAgentBatchesInput) =>
+      toRunnerResult(
+        input.batches.map((batch) =>
+          createSuccess(batch, [
+            { ...base, agent: batch.agent },
+            { ...base, agent: batch.agent, line: 25, message: "Unrelated old code." },
+            { ...base, agent: batch.agent, file: "src/elsewhere.ts", message: "Hallucinated file." },
+          ])
+        )
+      )
+    );
+
+    const result = await runReviewPipeline({
+      repoRootPath: "C:\\repo",
+      mergeBase: "abc123",
+      routingConfig: { unmatchedFilesPolicy: "skip", agentGlobs: { tester: ["**/*.ts"] } },
+      agentInstructions: { tester: "Review tests." },
+      llmClient: fakeLlmClient,
+      maxCharLimit: 4_000,
+      concurrency: 1,
+      retry: { maxRetries: 0, retryDelayMs: 0 },
+      minSeverity: "info",
+    });
+
+    expect(result.findings.map((f) => f.line)).toEqual([2]);
+    expect(result.metadata.droppedFindingCount).toBe(2);
+    expect(result.warnings.map((w) => [w.stage, w.code])).toEqual([
+      ["validation", "LINE_OUTSIDE_DIFF"],
+      ["validation", "UNKNOWN_FILE"],
+    ]);
+  });
 });

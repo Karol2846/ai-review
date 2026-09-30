@@ -58,6 +58,7 @@ function createPipelineResult(
       batchCount: 0,
       batchCountByAgent: {},
       parsedBatchCount: 0,
+      droppedFindingCount: 0,
       failedBatchCount: 0,
       failedBatches: [],
       runner: {
