@@ -101,6 +101,20 @@ function buildBatchId(agent: AgentName, batchIndex: number, chunks: readonly Bat
   return `${sanitizeForId(agent)}-${String(batchIndex + 1).padStart(4, "0")}-${digest}`;
 }
 
+/**
+ * Length of the next slice starting at `start`, at most `maxLength`, shortened to end right after
+ * the last newline when one fits — so chunks don't split lines (and their line-number prefixes).
+ */
+function sliceLengthAtLineBoundary(content: string, start: number, maxLength: number): number {
+  const length = Math.min(maxLength, content.length - start);
+  if (start + length >= content.length) {
+    return length;
+  }
+
+  const lastNewline = content.lastIndexOf("\n", start + length - 1);
+  return lastNewline >= start ? lastNewline - start + 1 : length;
+}
+
 interface ChunkDraft {
   readonly fullContent: string;
   readonly gitDiff: string;
@@ -147,13 +161,13 @@ function chunkFileContext(
       let remaining = payloadBudget;
 
       if (fullCursor < fullContent.length) {
-        const fullChunkLength = Math.min(remaining, fullContent.length - fullCursor);
+        const fullChunkLength = sliceLengthAtLineBoundary(fullContent, fullCursor, remaining);
         fullCursor += fullChunkLength;
         remaining -= fullChunkLength;
       }
 
       if (remaining > 0 && diffCursor < gitDiff.length) {
-        const diffChunkLength = Math.min(remaining, gitDiff.length - diffCursor);
+        const diffChunkLength = sliceLengthAtLineBoundary(gitDiff, diffCursor, remaining);
         diffCursor += diffChunkLength;
         remaining -= diffChunkLength;
       }

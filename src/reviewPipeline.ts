@@ -14,6 +14,7 @@ import {
 } from "./contextBuilder";
 import type { Finding } from "./findingSchema";
 import type { ReviewScope } from "./git";
+import { numberLines } from "./promptBuilder";
 import { routeFilesToAgents } from "./router";
 import type { AgentName, RoutingRuntimeConfig } from "./routingTypes";
 import {
@@ -89,7 +90,7 @@ function toFileContextMap(contexts: readonly { filePath: string; fullContent: st
   const byPath: Record<string, FileContext> = Object.create(null) as Record<string, FileContext>;
   for (const context of contexts) {
     byPath[context.filePath] = {
-      fullContent: context.fullContent,
+      fullContent: numberLines(context.fullContent),
       gitDiff: context.gitDiff,
     };
   }

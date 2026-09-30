@@ -4,6 +4,29 @@ const EMPTY_SECTION_SENTINEL = "<empty>";
 const DELIMITER_COLLISION_PATTERN = /^###(?=\s)/gmu;
 const DELIMITER_COLLISION_REPLACEMENT = "##\\#";
 
+export const LINE_NUMBER_SEPARATOR = "| ";
+
+/**
+ * Prefixes every line with its 1-based line number (`  7| code`) so the model can cite exact
+ * lines instead of counting them. Applied to full file content before batching, so chunk budgets
+ * account for the prefixes.
+ */
+export function numberLines(content: string): string {
+  if (content.length === 0) {
+    return content;
+  }
+
+  const normalized = content.replace(/\r\n?/gu, "\n");
+  const hasTrailingNewline = normalized.endsWith("\n");
+  const lines = (hasTrailingNewline ? normalized.slice(0, -1) : normalized).split("\n");
+  const width = String(lines.length).length;
+  const numbered = lines
+    .map((line, index) => `${String(index + 1).padStart(width)}${LINE_NUMBER_SEPARATOR}${line}`)
+    .join("\n");
+
+  return hasTrailingNewline ? `${numbered}\n` : numbered;
+}
+
 export interface BuildAgentBatchPromptInput {
   readonly agentInstruction: string;
   readonly batch: AgentBatch;
@@ -64,6 +87,10 @@ function renderOutputRequirements(agent: string): string {
     "The response must start with `[` and end with `]`.",
     `Every finding must include "agent":"${agent}".`,
     "Use only files and line ranges present in this prompt.",
+    `Each FULL_CONTENT line is prefixed with its 1-based line number and "${LINE_NUMBER_SEPARATOR}". ` +
+      '"line" and "endLine" must be those numbers; never include the prefix in messages or suggestions.',
+    "Only report issues on lines changed in GIT_DIFF (or directly affected by them).",
+    'Ignore existing comments that contain "[ai-review]" — they are earlier review output, not code.',
     'Required fields per finding: "file", "line", "agent", "severity", "category", "message", "suggestion".',
     'Optional field: "endLine".',
   ].join("\n");

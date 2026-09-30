@@ -102,6 +102,7 @@ Inserted comments must contain `[ai-review]`. Cleanup (`--clean`) removes every 
 ## Key conventions
 
 - **Diff-first scope**: review always operates on changes since `merge-base(origin/<base>, HEAD)` — working tree by default, `..HEAD` with `--committed-only` — never the whole repo.
+- **Line-numbered context**: `reviewPipeline.ts` prefixes full file content with line numbers (`numberLines` in `src/promptBuilder.ts`, format `  7| code`) before batching, and the batcher cuts chunks at line boundaries, so the model cites real line numbers instead of counting.
 - **Structured output via prompt + parser**: the prompt carries a JSON-format instruction; `src/responseParser.ts` extracts and validates the agent CLI's reply. Non-conforming records are dropped silently. Transient LLM errors are retried by `src/runner.ts`.
 - **`CliRuntimeDependencies` interface** (`src/cli.ts`): all I/O and side-effectful operations are injected through this interface, making `runCli` fully unit-testable without mocking globals.
 - **Transient error retry**: `src/runner.ts` retries on `LlmProviderError` codes marked transient in `src/llmProvider.ts` (`COMMAND_FAILED`, `RATE_LIMITED`, `NETWORK_ERROR`, `TIMEOUT`, `SERVICE_UNAVAILABLE`).
