@@ -90,6 +90,7 @@ function createPipelineResult(
       },
     },
     routedFilesByAgent: new Map(),
+    unroutedFiles: [],
     batches: [],
     parsedBatches: [],
   };
@@ -268,6 +269,33 @@ describe("runCli runtime flow", () => {
     expect(exitCode).toBe(0);
     expect(deps.getChangedFiles).toHaveBeenCalledWith("merge-base", "committed");
     expect(deps.runReviewPipeline).toHaveBeenCalledWith(expect.objectContaining({ scope: "committed" }));
+  });
+
+  it("lists files no agent reviewed on stderr, keeping stdout JSON clean", async () => {
+    const deps = createRuntimeDeps();
+    deps.getChangedFiles.mockResolvedValue(["src/service.ts", "Dockerfile", "package.json"]);
+    deps.runReviewPipeline.mockResolvedValue({
+      ...createPipelineResult(),
+      unroutedFiles: ["Dockerfile", "package.json"],
+    });
+
+    const exitCode = await runCli(["--json"], deps.overrides);
+
+    expect(exitCode).toBe(0);
+    expect(deps.writeStderr).toHaveBeenCalledWith("Not reviewed (no agent's globs match) — 2 files:");
+    expect(deps.writeStderr).toHaveBeenCalledWith("  Dockerfile");
+    expect(deps.writeStderr).toHaveBeenCalledWith("  package.json");
+    expect(deps.writeStdout).toHaveBeenCalledTimes(1);
+    expect(deps.writeStdout).toHaveBeenCalledWith("[]");
+  });
+
+  it("prints nothing about unreviewed files when every file was routed", async () => {
+    const deps = createRuntimeDeps();
+
+    const exitCode = await runCli(["--json"], deps.overrides);
+
+    expect(exitCode).toBe(0);
+    expect(deps.writeStderr).not.toHaveBeenCalledWith(expect.stringContaining("Not reviewed"));
   });
 
   it("applies --base, --exclude, --agents, --severity, --parallel and passes model to pipeline", async () => {

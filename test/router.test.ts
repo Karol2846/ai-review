@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { routeFilesToAgents } from "../src/router";
+import { findUnroutedFiles, routeFilesToAgents } from "../src/router";
 import type { RoutingRuntimeConfig } from "../src/routingTypes";
 
 function createConfig(agentGlobs: Record<string, readonly string[]>): RoutingRuntimeConfig {
@@ -115,6 +115,26 @@ describe("routeFilesToAgents", () => {
     // Among those present: clean-coder first, then tester, then performance
     // Unknown agents sorted alphabetically: custom-z
     expect([...result.keys()]).toEqual(["clean-coder", "tester", "performance", "custom-z"]);
+  });
+
+  it("findUnroutedFiles returns sorted, deduplicated files that no agent received", () => {
+    const config = createConfig({
+      tester: ["**/*.spec.ts"],
+      architect: ["src/**/*.ts"],
+    });
+    const changedFiles = ["src/service.ts", "package.json", "Dockerfile", "package.json"];
+
+    const routed = routeFilesToAgents(changedFiles, config);
+
+    expect(findUnroutedFiles(changedFiles, routed)).toEqual(["Dockerfile", "package.json"]);
+  });
+
+  it("findUnroutedFiles returns an empty list when every file is routed", () => {
+    const config = createConfig({ architect: ["src/**/*.ts"] });
+
+    const routed = routeFilesToAgents(["src/a.ts"], config);
+
+    expect(findUnroutedFiles(["src/a.ts"], routed)).toEqual([]);
   });
 
   it("normalises Windows-style backslash paths when matching globs", () => {

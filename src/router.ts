@@ -58,3 +58,17 @@ export function routeFilesToAgents(
 
   return routed;
 }
+
+/** Files from `changedFiles` that no agent was routed — nobody reviews them in this run. */
+export function findUnroutedFiles(
+  changedFiles: readonly string[],
+  routedFilesByAgent: ReadonlyMap<AgentName, readonly string[]>
+): string[] {
+  const routedFiles = new Set<string>();
+  for (const files of routedFilesByAgent.values()) {
+    for (const file of files) {
+      routedFiles.add(file);
+    }
+  }
+  return toDeterministicUniqueList(changedFiles).filter((file) => !routedFiles.has(file));
+}
