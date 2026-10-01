@@ -1,10 +1,5 @@
-import micromatch from "micromatch";
-
+import { matchesGlobs } from "./globMatch";
 import { AGENT_NAMES, type AgentName, type RoutingRuntimeConfig } from "./routingTypes";
-
-function normalizeForGlob(path: string): string {
-  return path.replace(/\\/gu, "/");
-}
 
 function toDeterministicUniqueList(files: readonly string[]): string[] {
   return [...new Set(files)].sort();
@@ -32,12 +27,11 @@ export function routeFilesToAgents(
   }
 
   for (const file of toDeterministicUniqueList(changedFiles)) {
-    const matchPath = normalizeForGlob(file);
     let matched = false;
 
     for (const agent of agentNames) {
       const patterns = config.agentGlobs[agent];
-      if (patterns && micromatch.isMatch(matchPath, patterns)) {
+      if (patterns && matchesGlobs(file, patterns)) {
         const bucket = filesByAgent.get(agent);
         if (bucket) {
           bucket.add(file);

@@ -139,6 +139,19 @@ describe("parseRepoConfig — agents section (built-in overrides)", () => {
     expect(() => parseRepoConfig(raw)).toThrow(/replace.*boolean/i);
   });
 
+  it("allows only negated globs when extending a built-in agent", () => {
+    const raw = JSON.stringify({ agents: { tester: { globs: ["!**/fixtures/**"] } } });
+    expect(parseRepoConfig(raw)?.agents?.tester).toEqual({ globs: ["!**/fixtures/**"] });
+  });
+
+  it("throws when replace: true is used with only negated globs", () => {
+    const raw = JSON.stringify({
+      agents: { tester: { globs: ["!**/fixtures/**"], replace: true } },
+    });
+    expect(() => parseRepoConfig(raw)).toThrow(RepoConfigError);
+    expect(() => parseRepoConfig(raw)).toThrow(/non-negated pattern/);
+  });
+
   it("throws on empty globs for a built-in agent", () => {
     const raw = JSON.stringify({ agents: { tester: { globs: [] } } });
     expect(() => parseRepoConfig(raw)).toThrow(/at least one non-empty value/i);
@@ -184,6 +197,14 @@ describe("parseRepoConfig — agents section (custom agents)", () => {
     });
     const result = parseRepoConfig(raw);
     expect(result?.agents?.security?.instructionsFile).toBe("agents/security.agent.md");
+  });
+
+  it("throws when a custom agent has only negated globs", () => {
+    const raw = JSON.stringify({
+      agents: { security: { globs: ["!**/*.md"], instructionsFile: "agents/security.agent.md" } },
+    });
+    expect(() => parseRepoConfig(raw)).toThrow(RepoConfigError);
+    expect(() => parseRepoConfig(raw)).toThrow(/non-negated pattern/);
   });
 
   it("throws when instructionsFile is missing for a custom agent", () => {

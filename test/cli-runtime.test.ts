@@ -391,6 +391,21 @@ describe("runCli runtime flow", () => {
     );
   });
 
+  it("keeps files re-included by a negated exclude glob and leaves unrelated files alone", async () => {
+    const deps = createRuntimeDeps();
+    deps.getChangedFiles.mockResolvedValue(["src/service.ts", "vendor/lib.ts", "vendor/keep/patch.ts"]);
+    deps.readRepoConfigFile.mockReturnValue(
+      JSON.stringify({ exclude: ["vendor/**", "!vendor/keep/**"] })
+    );
+
+    const exitCode = await runCli(["--json"], deps.overrides);
+
+    expect(exitCode).toBe(0);
+    expect(deps.runReviewPipeline).toHaveBeenCalledWith(
+      expect.objectContaining({ changedFiles: ["src/service.ts", "vendor/keep/patch.ts"] })
+    );
+  });
+
   it("unions config exclude with --exclude globs (dedup)", async () => {
     const deps = createRuntimeDeps();
     deps.getChangedFiles.mockResolvedValue([

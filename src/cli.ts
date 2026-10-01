@@ -4,7 +4,6 @@ import {homedir} from "node:os";
 import {join, resolve} from "node:path";
 
 import {execa} from "execa";
-import micromatch from "micromatch";
 
 import {
   type AnnotationFinding,
@@ -17,6 +16,7 @@ import {readFileSync} from "node:fs";
 
 import {CliArgsError, type CliOptions, formatCliUsage, parseCliArgs} from "./cliArgs";
 import {defaultRoutingConfig} from "./defaultConfig";
+import {matchesGlobs} from "./globMatch";
 import {runInit} from "./init";
 import {getChangedFiles, getMergeBase, type ReviewScope} from "./git";
 import {
@@ -207,16 +207,12 @@ async function loadAgentInstructionsFromDisk(
   };
 }
 
-function normalizeGlobPath(filePath: string): string {
-  return filePath.replace(/\\/gu, "/");
-}
-
 function excludeChangedFiles(
   changedFiles: readonly string[],
   excludeGlobs: readonly string[]
 ): string[] {
   return changedFiles.filter(
-    (filePath) => !micromatch.isMatch(normalizeGlobPath(filePath), excludeGlobs)
+    (filePath) => !matchesGlobs(filePath, excludeGlobs)
   );
 }
 

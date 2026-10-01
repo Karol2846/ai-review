@@ -117,6 +117,29 @@ describe("routeFilesToAgents", () => {
     expect([...result.keys()]).toEqual(["clean-coder", "tester", "performance", "custom-z"]);
   });
 
+  it("drops files matching a negated glob even when a positive glob matches them", () => {
+    const config = createConfig({
+      "clean-coder": ["src/**/*.ts", "!**/*.d.ts"],
+    });
+
+    const result = routeFilesToAgents(["src/service.ts", "src/types.d.ts"], config);
+
+    expect(result.get("clean-coder")).toEqual(["src/service.ts"]);
+  });
+
+  it("applies negated globs regardless of their position in the list", () => {
+    const config = createConfig({
+      tester: ["!**/fixtures/**", "**/*.test.ts"],
+    });
+
+    const result = routeFilesToAgents(
+      ["src/a.test.ts", "src/fixtures/b.test.ts", "src/c.ts"],
+      config
+    );
+
+    expect(result.get("tester")).toEqual(["src/a.test.ts"]);
+  });
+
   it("normalises Windows-style backslash paths when matching globs", () => {
     const config = createConfig({
       architect: ["src/**/*.ts"],
