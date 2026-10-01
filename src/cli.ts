@@ -4,7 +4,6 @@ import {homedir} from "node:os";
 import {join, resolve} from "node:path";
 
 import {execa} from "execa";
-import micromatch from "micromatch";
 
 import {
   type AnnotationFinding,
@@ -17,6 +16,7 @@ import {readFileSync} from "node:fs";
 
 import {CliArgsError, type CliOptions, formatCliUsage, parseCliArgs} from "./cliArgs";
 import {defaultRoutingConfig} from "./defaultConfig";
+import {matchesGlobs} from "./globMatch";
 import {runInit} from "./init";
 import {getChangedFiles, getMergeBase, type ReviewScope} from "./git";
 import {
@@ -28,7 +28,6 @@ import {
 import {createLlmClient, type LlmClient, PROVIDER_INFO} from "./llmClient";
 import {parseRepoConfig, mergeRoutingConfig, agentsToRoutingOverride, isCustomAgent, RepoConfigError, REPO_CONFIG_FILE_NAME} from "./repoConfig";
 import {renderReport} from "./reporter";
-import {GLOB_MATCH_OPTIONS} from "./router";
 import {runReviewPipeline, type RunReviewPipelineInput, type RunReviewPipelineResult} from "./reviewPipeline";
 import type {AgentInstructionsByAgent, RunnerRetryConfig} from "./runner";
 import type {AgentsMap, RoutingRuntimeConfig} from "./routingTypes";
@@ -208,16 +207,12 @@ async function loadAgentInstructionsFromDisk(
   };
 }
 
-function normalizeGlobPath(filePath: string): string {
-  return filePath.replace(/\\/gu, "/");
-}
-
 function excludeChangedFiles(
   changedFiles: readonly string[],
   excludeGlobs: readonly string[]
 ): string[] {
   return changedFiles.filter(
-    (filePath) => !micromatch.isMatch(normalizeGlobPath(filePath), excludeGlobs, GLOB_MATCH_OPTIONS)
+    (filePath) => !matchesGlobs(filePath, excludeGlobs)
   );
 }
 

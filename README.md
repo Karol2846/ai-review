@@ -302,8 +302,6 @@ Create `ai-review.json` in your project root to extend the default routing for y
 
 **Allowed agent names:** `clean-coder`, `tester`, `architect`, `ddd-reviewer`, `performance`
 
-Globs (here and in `exclude`) use [micromatch](https://github.com/micromatch/micromatch) syntax against repo-relative paths; `*` and `**` also match dotfiles and dot-directories, so `**/*.yml` covers `.github/workflows/ci.yml`.
-
 ### Excluding files
 
 Add an `exclude` array of glob patterns to drop matching files **before routing** — no agent reviews them. Useful for generated, vendored, or snapshot files:
@@ -315,6 +313,19 @@ Add an `exclude` array of glob patterns to drop matching files **before routing*
 ```
 
 The `--exclude` CLI flag (comma-separated globs) adds to this list: the effective set is the **union** of `ai-review.json` and `--exclude`, deduplicated.
+
+### Glob patterns
+
+Agent `globs` and `exclude` use [micromatch](https://github.com/micromatch/micromatch) syntax, matched against repo-relative paths; `*` and `**` also match dotfiles and dot-directories, so `**/*.yml` covers `.github/workflows/ci.yml`. A pattern prefixed with `!` **removes** files the other patterns in the list would match — negations win regardless of their position:
+
+```json
+{
+  "agents": { "tester": { "globs": ["!**/fixtures/**"] } },
+  "exclude": ["vendor/**", "!vendor/patched/**"]
+}
+```
+
+Here the `tester` defaults still apply but skip `fixtures/`, and `vendor/` is excluded except for `vendor/patched/`. A custom agent, or a built-in one with `"replace": true`, must list at least one pattern without `!`.
 
 ### Excluding agents
 
