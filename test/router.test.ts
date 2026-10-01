@@ -117,6 +117,21 @@ describe("routeFilesToAgents", () => {
     expect([...result.keys()]).toEqual(["clean-coder", "tester", "performance", "custom-z"]);
   });
 
+  it("matches files in dot-directories and dotfiles with ** and *", () => {
+    const config = createConfig({
+      architect: ["**/*.yml"],
+      "clean-coder": ["src/**/*.ts"],
+    });
+
+    const result = routeFilesToAgents(
+      [".github/workflows/ci.yml", "src/.internal/helper.ts", "src/.eslintrc.ts"],
+      config
+    );
+
+    expect(result.get("architect")).toEqual([".github/workflows/ci.yml"]);
+    expect(result.get("clean-coder")).toEqual(["src/.eslintrc.ts", "src/.internal/helper.ts"]);
+  });
+
   it("normalises Windows-style backslash paths when matching globs", () => {
     const config = createConfig({
       architect: ["src/**/*.ts"],

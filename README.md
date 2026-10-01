@@ -302,6 +302,8 @@ Create `ai-review.json` in your project root to extend the default routing for y
 
 **Allowed agent names:** `clean-coder`, `tester`, `architect`, `ddd-reviewer`, `performance`
 
+Globs (here and in `exclude`) use [micromatch](https://github.com/micromatch/micromatch) syntax against repo-relative paths; `*` and `**` also match dotfiles and dot-directories, so `**/*.yml` covers `.github/workflows/ci.yml`.
+
 ### Excluding files
 
 Add an `exclude` array of glob patterns to drop matching files **before routing** — no agent reviews them. Useful for generated, vendored, or snapshot files:

@@ -28,6 +28,7 @@ import {
 import {createLlmClient, type LlmClient, PROVIDER_INFO} from "./llmClient";
 import {parseRepoConfig, mergeRoutingConfig, agentsToRoutingOverride, isCustomAgent, RepoConfigError, REPO_CONFIG_FILE_NAME} from "./repoConfig";
 import {renderReport} from "./reporter";
+import {GLOB_MATCH_OPTIONS} from "./router";
 import {runReviewPipeline, type RunReviewPipelineInput, type RunReviewPipelineResult} from "./reviewPipeline";
 import type {AgentInstructionsByAgent, RunnerRetryConfig} from "./runner";
 import type {AgentsMap, RoutingRuntimeConfig} from "./routingTypes";
@@ -216,7 +217,7 @@ function excludeChangedFiles(
   excludeGlobs: readonly string[]
 ): string[] {
   return changedFiles.filter(
-    (filePath) => !micromatch.isMatch(normalizeGlobPath(filePath), excludeGlobs)
+    (filePath) => !micromatch.isMatch(normalizeGlobPath(filePath), excludeGlobs, GLOB_MATCH_OPTIONS)
   );
 }
 
