@@ -322,6 +322,19 @@ Add an `exclude` array of glob patterns to drop matching files **before routing*
 
 The `--exclude` CLI flag (comma-separated globs) adds to this list: the effective set is the **union** of `ai-review.json` and `--exclude`, deduplicated.
 
+### Glob patterns
+
+Agent `globs` and `exclude` use [micromatch](https://github.com/micromatch/micromatch) syntax, matched against repo-relative paths. A pattern prefixed with `!` **removes** files the other patterns in the list would match — negations win regardless of their position:
+
+```json
+{
+  "agents": { "tester": { "globs": ["!**/fixtures/**"] } },
+  "exclude": ["vendor/**", "!vendor/patched/**"]
+}
+```
+
+Here the `tester` defaults still apply but skip `fixtures/`, and `vendor/` is excluded except for `vendor/patched/`. A custom agent, or a built-in one with `"replace": true`, must list at least one pattern without `!`.
+
 ### Excluding agents
 
 Add an `excludeAgents` array to permanently disable specific agents for this repo. Useful when a repo doesn't follow DDD, has no tests yet, etc.:
