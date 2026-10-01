@@ -1,0 +1,37 @@
+import micromatch from "micromatch";
+
+/** Normalizes a repo-relative path to forward slashes so globs match the same way on Windows. */
+export function normalizeGlobPath(filePath: string): string {
+  return filePath.replace(/\\/gu, "/");
+}
+
+/** A leading `!` negates the pattern; `!(…)` is an extglob and stays a positive pattern. */
+export function isNegatedGlob(pattern: string): boolean {
+  return pattern.startsWith("!") && !pattern.startsWith("!(");
+}
+
+/**
+ * Returns true when `filePath` matches at least one positive pattern and none of the `!`-negated
+ * ones. Negations win regardless of their position in the list, because lists are merged from
+ * several sources (defaults + `ai-review.json`, config + CLI) whose order the user cannot see.
+ * A list made only of negations matches every path it does not exclude; an empty list matches
+ * nothing.
+ *
+ * Neither `micromatch.isMatch` (ORs all patterns, so `!**\/*.d.ts` matches almost anything) nor
+ * `micromatch()` (a later positive pattern re-includes what an earlier negation removed) gives
+ * these semantics on its own.
+ */
+export function matchesGlobs(filePath: string, patterns: readonly string[]): boolean {
+  if (patterns.length === 0) {
+    return false;
+  }
+
+  const path = normalizeGlobPath(filePath);
+  const positive = patterns.filter((pattern) => !isNegatedGlob(pattern));
+  const negated = patterns.filter(isNegatedGlob).map((pattern) => pattern.slice(1));
+
+  if (negated.length > 0 && micromatch.isMatch(path, negated)) {
+    return false;
+  }
+  return positive.length === 0 || micromatch.isMatch(path, positive);
+}

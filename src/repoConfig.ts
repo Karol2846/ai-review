@@ -1,4 +1,5 @@
 import { type UserModelConfigOverride } from "./installProviderConfig";
+import { isNegatedGlob } from "./globMatch";
 import {
   AGENT_NAMES,
   type AgentDefinition,
@@ -180,6 +181,19 @@ function parseAgentsSection(agents: unknown): AgentsMap | null {
   return result;
 }
 
+/**
+ * Globs that only negate (`!pattern`) match every file they do not exclude, so they are allowed
+ * only when extending a built-in agent's defaults, which supply the positive patterns.
+ */
+function requirePositiveGlob(globs: readonly string[], agentName: string, context: string): void {
+  if (globs.every(isNegatedGlob)) {
+    throw new RepoConfigError(
+      `${REPO_CONFIG_FILE_NAME}: "agents.${agentName}.globs" must include at least one ` +
+        `non-negated pattern ${context}.`
+    );
+  }
+}
+
 function parseBuiltinAgentEntry(
   agentName: string,
   defObj: Record<string, unknown>
@@ -208,6 +222,9 @@ function parseBuiltinAgentEntry(
       `${REPO_CONFIG_FILE_NAME}: "agents.${agentName}.replace" must be a boolean.`
     );
   }
+  if (replace === true) {
+    requirePositiveGlob(globs, agentName, "with \"replace\": true");
+  }
 
   return { globs, ...(replace === true ? { replace: true } : {}) };
 }
@@ -227,6 +244,7 @@ function parseCustomAgentEntry(
   }
 
   const globs = validateGlobsArray(defObj["globs"], `agents.${agentName}.globs`);
+  requirePositiveGlob(globs, agentName, "for a custom agent");
 
   const instructionsFile = defObj["instructionsFile"];
   if (typeof instructionsFile !== "string" || instructionsFile.trim().length === 0) {
