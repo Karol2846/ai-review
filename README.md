@@ -302,6 +302,14 @@ Create `ai-review.json` in your project root to extend the default routing for y
 
 **Allowed agent names:** `clean-coder`, `tester`, `architect`, `ddd-reviewer`, `performance`
 
+Changed files that match **no** agent's globs (config files, `Dockerfile`, CI workflows, …) are not reviewed — agents focus on code. They are listed on stderr after the run so you can see what was skipped (and extend the globs if a file should be reviewed):
+
+```
+Not reviewed (no agent's globs match) — 2 files:
+  Dockerfile
+  package.json
+```
+
 ### Excluding files
 
 Add an `exclude` array of glob patterns to drop matching files **before routing** — no agent reviews them. Useful for generated, vendored, or snapshot files:
