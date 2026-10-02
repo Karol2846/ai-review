@@ -28,8 +28,13 @@ ai-review --base develop               # compare against specific branch
 ai-review --committed-only             # ignore uncommitted/untracked changes
 ai-review --clean                      # remove previous [ai-review] TODOs
 ai-review --severity warning           # only warning+critical
-ai-review --json                       # raw JSON output
+ai-review --json                       # raw JSON output (no annotations)
+ai-review --exclude "vendor/**"        # skip files matching globs
+ai-review --exclude-agents "performance"  # run all agents except these
+ai-review init                         # scaffold an example ai-review.json
 ```
+
+Per-repo settings (model, extra/custom agents, excluded files and agents) live in `ai-review.json` in the repository root.
 
 ## Review Agents
 
@@ -43,7 +48,7 @@ ai-review --json                       # raw JSON output
 
 ## Finding Format
 
-Each agent returns:
+Each agent returns (`endLine` is optional; `--json` output also adds a `fingerprint`):
 ```json
 [{
   "file": "src/main/java/...",
