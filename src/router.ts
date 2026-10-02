@@ -1,4 +1,4 @@
-import { matchesGlobs } from "./globMatch";
+import { explainGlobMatch, matchesGlobs } from "./globMatch";
 import { AGENT_NAMES, type AgentName, type RoutingRuntimeConfig } from "./routingTypes";
 
 function toDeterministicUniqueList(files: readonly string[]): string[] {
@@ -65,4 +65,40 @@ export function findUnroutedFiles(
     }
   }
   return toDeterministicUniqueList(changedFiles).filter((file) => !routedFiles.has(file));
+}
+
+export interface AgentRoutingExplanation {
+  readonly agent: AgentName;
+  /** The agent glob that matched the file; absent when the agent's globs are all negations. */
+  readonly matchedBy?: string;
+  /** Set when a `!` glob of the agent removed the file again — the agent does not receive it. */
+  readonly excludedBy?: string;
+}
+
+export interface FileRoutingExplanation {
+  readonly file: string;
+  /** Agents with a matching glob, in routing order; those with `excludedBy` do not get the file. */
+  readonly matches: readonly AgentRoutingExplanation[];
+}
+
+/**
+ * Explains `routeFilesToAgents`: for every file (deduplicated, sorted), which agents' globs match
+ * it and which pattern did, including agents whose negated globs removed it again.
+ */
+export function explainRouting(
+  changedFiles: readonly string[],
+  config: RoutingRuntimeConfig
+): FileRoutingExplanation[] {
+  const agentNames = toDeterministicAgentList(config);
+
+  return toDeterministicUniqueList(changedFiles).map((file) => {
+    const matches: AgentRoutingExplanation[] = [];
+    for (const agent of agentNames) {
+      const explanation = explainGlobMatch(file, config.agentGlobs[agent] ?? []);
+      if (explanation !== null) {
+        matches.push({ agent, ...explanation });
+      }
+    }
+    return { file, matches };
+  });
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { findUnroutedFiles, routeFilesToAgents } from "../src/router";
+import { explainRouting, findUnroutedFiles, routeFilesToAgents } from "../src/router";
 import type { RoutingRuntimeConfig } from "../src/routingTypes";
 
 function createConfig(agentGlobs: Record<string, readonly string[]>): RoutingRuntimeConfig {
@@ -173,6 +173,24 @@ describe("routeFilesToAgents", () => {
     );
 
     expect(result.get("tester")).toEqual(["src/a.test.ts"]);
+  });
+
+  it("explainRouting lists every agent whose glob matches, including negated ones", () => {
+    const config = createConfig({
+      "clean-coder": ["src/**/*.ts", "!**/*.test.ts"],
+      tester: ["**/*.test.ts"],
+    });
+
+    expect(explainRouting(["src/a.test.ts", "README.md", "src/a.test.ts"], config)).toEqual([
+      { file: "README.md", matches: [] },
+      {
+        file: "src/a.test.ts",
+        matches: [
+          { agent: "clean-coder", matchedBy: "src/**/*.ts", excludedBy: "!**/*.test.ts" },
+          { agent: "tester", matchedBy: "**/*.test.ts" },
+        ],
+      },
+    ]);
   });
 
   it("normalises Windows-style backslash paths when matching globs", () => {

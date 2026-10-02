@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isNegatedGlob, matchesGlobs } from "../src/globMatch";
+import { explainGlobMatch, isNegatedGlob, matchesGlobs } from "../src/globMatch";
 
 describe("matchesGlobs", () => {
   it("matches when any positive pattern matches", () => {
@@ -38,5 +38,42 @@ describe("isNegatedGlob", () => {
     expect(isNegatedGlob("!**/*.d.ts")).toBe(true);
     expect(isNegatedGlob("**/*.ts")).toBe(false);
     expect(isNegatedGlob("!(*.d).ts")).toBe(false);
+  });
+});
+
+describe("explainGlobMatch", () => {
+  it("returns the first positive pattern that matched", () => {
+    expect(explainGlobMatch("src/a.ts", ["**/*.java", "src/**", "**/*.ts"])).toEqual({
+      matchedBy: "src/**",
+    });
+  });
+
+  it("reports the negation that removed the path", () => {
+    expect(explainGlobMatch("src/a.d.ts", ["**/*.ts", "!**/*.d.ts"])).toEqual({
+      matchedBy: "**/*.ts",
+      excludedBy: "!**/*.d.ts",
+    });
+  });
+
+  it("returns null when no positive pattern matches or the list is empty", () => {
+    expect(explainGlobMatch("README.md", ["**/*.ts", "!**/*.d.ts"])).toBeNull();
+    expect(explainGlobMatch("src/a.ts", [])).toBeNull();
+  });
+
+  it("handles negation-only lists", () => {
+    expect(explainGlobMatch("src/a.ts", ["!**/*.md"])).toEqual({});
+    expect(explainGlobMatch("README.md", ["!**/*.md"])).toEqual({ excludedBy: "!**/*.md" });
+  });
+
+  it("agrees with matchesGlobs", () => {
+    const lists = [["**/*.ts", "!**/*.d.ts"], ["!**/*.md"], ["vendor/**", "!vendor/keep/**"], []];
+    const paths = ["src/a.ts", "src/a.d.ts", "README.md", "vendor/x.ts", "vendor/keep/y.ts", ".github/ci.yml"];
+    for (const patterns of lists) {
+      for (const path of paths) {
+        const explanation = explainGlobMatch(path, patterns);
+        const explainedMatch = explanation !== null && explanation.excludedBy === undefined;
+        expect(explainedMatch, `${path} vs ${JSON.stringify(patterns)}`).toBe(matchesGlobs(path, patterns));
+      }
+    }
   });
 });

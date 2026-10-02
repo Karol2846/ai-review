@@ -395,6 +395,42 @@ describe("runCli runtime flow", () => {
     expect(deps.runReviewPipeline).not.toHaveBeenCalled();
   });
 
+  it("--explain-routing prints the routing without loading agents or calling the agent CLI", async () => {
+    const deps = createRuntimeDeps();
+    deps.getChangedFiles.mockResolvedValue(["src/service.ts", "Dockerfile", "vendor/lib.ts"]);
+
+    const exitCode = await runCli(
+      ["--explain-routing", "--exclude", "vendor/**", "--agents", "clean-coder"],
+      deps.overrides
+    );
+
+    expect(exitCode).toBe(0);
+    expect(deps.loadAgentInstructions).not.toHaveBeenCalled();
+    expect(deps.resolveLlmClient).not.toHaveBeenCalled();
+    expect(deps.runReviewPipeline).not.toHaveBeenCalled();
+    expect(deps.applyAnnotations).not.toHaveBeenCalled();
+    const output = deps.writeStdout.mock.calls.map(([message]) => message).join("\n");
+    expect(output).toContain(
+      "Routing for 3 changed files against origin/main: 1 reviewed, 1 not reviewed, 1 excluded."
+    );
+    expect(output).toContain("Agents: clean-coder");
+    expect(output).toMatch(/src\/service\.ts\n {2}clean-coder {2}matched /u);
+    expect(output).toContain('vendor/lib.ts\n  excluded by "vendor/**"');
+  });
+
+  it("--explain-routing --json prints the explanation entries as JSON", async () => {
+    const deps = createRuntimeDeps();
+    deps.getChangedFiles.mockResolvedValue(["Dockerfile"]);
+
+    const exitCode = await runCli(["--explain-routing", "--json"], deps.overrides);
+
+    expect(exitCode).toBe(0);
+    expect(deps.runReviewPipeline).not.toHaveBeenCalled();
+    expect(JSON.parse(deps.writeStdout.mock.calls[0]?.[0] ?? "")).toEqual([
+      { file: "Dockerfile", status: "unrouted", agents: [], negated: [] },
+    ]);
+  });
+
   it("returns empty JSON when all files are excluded via --exclude", async () => {
     const deps = createRuntimeDeps();
     deps.getChangedFiles.mockResolvedValue(["README.md"]);

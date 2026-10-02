@@ -6,7 +6,8 @@ export {
   isTransientLlmProviderErrorCode,
 } from "./llmProvider";
 export { defaultRoutingConfig } from "./defaultConfig";
-export { findUnroutedFiles, routeFilesToAgents } from "./router";
+export { explainRouting, findUnroutedFiles, routeFilesToAgents } from "./router";
+export { buildRoutingExplanation, formatRoutingExplanation } from "./routingExplanation";
 export { buildFileContexts, buildNewFileDiff } from "./contextBuilder";
 export { createBatches } from "./batcher";
 export { buildAgentBatchPrompt } from "./promptBuilder";
@@ -112,3 +113,10 @@ export type {
   ApplyAnnotationsResult,
   CleanAnnotationsResult,
 } from "./annotator";
+export type { AgentRoutingExplanation, FileRoutingExplanation } from "./router";
+export type {
+  FileRoutingStatus,
+  NegatedAgent,
+  RoutedAgent,
+  RoutingExplanationEntry,
+} from "./routingExplanation";

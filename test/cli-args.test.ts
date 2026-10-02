@@ -22,6 +22,7 @@ describe("parseCliArgs", () => {
       minSeverity: "info",
       maxParallel: 5,
       committedOnly: false,
+      explainRouting: false,
     });
     expect(result.agents).toBeUndefined();
     expect(result.command).toBeUndefined();
@@ -61,7 +62,20 @@ describe("parseCliArgs", () => {
       exclude: ["**/*.generated.ts", "vendor/**"],
       maxParallel: 3,
       committedOnly: true,
+      explainRouting: false,
     });
+  });
+
+  it("parses --explain-routing", () => {
+    expect(parseCliArgs(["--explain-routing"]).explainRouting).toBe(true);
+    expect(parseCliArgs(["--explain-routing", "--json"])).toMatchObject({
+      explainRouting: true,
+      json: true,
+    });
+  });
+
+  it("rejects --explain-routing together with --clean", () => {
+    expectCliArgsError(["--explain-routing", "--clean"], /--explain-routing or --clean/);
   });
 
   it("supports --help", () => {
