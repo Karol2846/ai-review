@@ -70,6 +70,7 @@ cd /path/to/your/repo
 ai-review                          # insert TODO comments into files (default)
 ai-review --report                 # + print terminal report
 ai-review --clean                  # remove TODO comments
+ai-review init                     # scaffold an example ai-review.json (see Per-repo config)
 ```
 
 ---
@@ -80,22 +81,24 @@ ai-review --clean                  # remove TODO comments
 ai-review
   │
   ├─ 1. SCOPE
-   │      git diff $(merge-base HEAD origin/main)   (commits + uncommitted)
-   │      + untracked files (git ls-files --others --exclude-standard)
-   │      → list of changed files   (--committed-only: ..HEAD, commits only)
-   │
-  ├─ 2. ANALYZE  (parallel batched calls per file × agent)
-   │      Each agent receives: diff + bounded file context
-   │      Agent CLI (claude / copilot / codex) runs headless → JSON response
-   │      Response parsed and validated per-record; invalid records dropped
-   │
+  │      git diff $(git merge-base HEAD origin/<base>)   (commits + uncommitted)
+  │      + untracked files (git ls-files --others --exclude-standard)
+  │      → list of changed files   (--committed-only: ..HEAD, commits only)
+  │      minus files matching `exclude` / --exclude
+  │
+  ├─ 2. ANALYZE  (parallel, up to --parallel agent CLI calls at once)
+  │      Files routed to agents by glob; each agent's files packed into batches
+  │      Each batch carries: diff + bounded file context
+  │      Agent CLI (claude / copilot / codex) runs headless → JSON response
+  │      Response parsed and validated per-record; invalid records dropped
+  │
   ├─ 3. AGGREGATE
-   │      Merge all JSONs, deduplicate by fingerprint,
-   │      filter by min severity, sort: critical → warning → info
-   │
+  │      Merge all findings, filter by min severity,
+  │      deduplicate by fingerprint, sort: critical → warning → info
+  │
   ├─ 4a. ANNOTATE (default)
-   │       Insert TODO comments above flagged lines (bottom-up to preserve line numbers)
-   │
+  │       Insert TODO comments above flagged lines (bottom-up to preserve line numbers)
+  │
   └─ 4b. REPORT (--report, optional)
           Colored terminal output grouped by file
 ```
@@ -135,37 +138,48 @@ All agents are critical and pragmatic — they name exact classes and methods, a
 ```
 
 ### TODO annotation (default)
+Each finding becomes a comment inserted directly above the flagged line, with the line's indentation:
 ```java
+// TODO architect critical: No @ControllerAdvice found. Uncaught exceptions will expose stack traces. → Add a @RestControllerAdvice class with @ExceptionHandler methods. [ai-review]
 public class CreatorController {}
 ```
 
 Comment syntax per file type:
 | Extension | Comment prefix |
 |-----------|---------------|
-| `.java`, `.groovy`, `.kt`, `.ts`, `.js`, `.go` | `//` |
-| `.yml`, `.yaml`, `.properties`, `.py`, `.sh`, `.tf` | `#` |
+| `.java`, `.groovy`, `.kt`, `.scala`, `.ts`, `.tsx`, `.js`, `.jsx`, `.go`, `.rs`, `.c`, `.cpp`, `.h` | `//` |
+| `.yml`, `.yaml`, `.properties`, `.py`, `.rb`, `.sh`, `.bash`, `.toml`, `.cfg`, `.ini`, `.tf` | `#` |
 | `.sql` | `--` |
-| `.xml`, `.html` | `<!-- -->` |
-| other | skipped |
+| `.xml`, `.html`, `.htm` | `<!-- -->` |
+| other | skipped (the finding still shows up in `--report` / `--json`) |
+
+`--clean` scans the repository (skipping `.git/` and `node_modules/`) and removes only lines that match this generated format, so your own comments that merely mention `[ai-review]` are left alone.
 
 ---
 
 ## Options
 
 ```
+Usage: ai-review [OPTIONS]
+       ai-review init [--force]
+
+init                    Scaffold an example ai-review.json in the current directory
 -h, --help              Show usage
---base <branch>         Base branch for diff (default: auto-detect)
+--base <branch>         Base branch for diff (default: auto-detect origin/HEAD, then main, master)
 --committed-only        Review only commits (default: also uncommitted and untracked changes)
 --agents <list>         Comma-separated agent list (default: all)
 --exclude-agents <list> Comma-separated agents to skip (default: none)
 --severity <min>        Minimum severity: critical, warning, info (default: info)
 --exclude <list>        Comma-separated glob patterns to exclude from review
---report                Print terminal report (annotations are default)
+--report                Also print a terminal report (files are still annotated)
 --clean                 Remove previous [ai-review] TODO comments
---json                  Output raw JSON findings
+--json                  Print findings as a JSON array on stdout (no annotations)
 --parallel <n>          Max parallel agent invocations (default: 5)
---debug                 Show raw agent output and timings for debugging
+--debug                 Print diagnostics (base branch, merge-base, scope, warnings) to stderr
+--force                 Overwrite an existing ai-review.json (with init)
 ```
+
+`--base` is always resolved against the remote: `--base develop` diffs against `origin/develop`.
 
 ---
 
@@ -200,7 +214,9 @@ ai-review --exclude-agents "ddd-reviewer,performance"    # run all except these 
 ### Debug when something seems wrong
 ```bash
 ai-review --debug --agents "architect"
-# Shows parser/pipeline warnings and annotation stats on stderr
+# Prints the resolved base branch, merge-base, review scope, changed-file count,
+# loaded ai-review.json overrides and pipeline warnings (failed batches,
+# skipped files, missing agent instructions) on stderr
 ```
 
 ### CI / scripting
@@ -214,19 +230,22 @@ ai-review --json --severity critical | jq -e 'length == 0'
 
 ## JSON Schema
 
-Each finding:
+`--json` prints an array of findings. Each finding:
 ```json
 {
   "file": "src/main/java/com/example/CreatorFacade.java",
   "line": 42,
+  "endLine": 48,
   "agent": "architect",
   "severity": "critical | warning | info",
   "category": "missing-exception-handler",
   "message": "No @ControllerAdvice found. Uncaught exceptions expose stack traces.",
   "suggestion": "Add a @RestControllerAdvice class.",
-  "fingerprint": "src/...java:42:missing-exception-handler:No @ControllerAdvice"
+  "fingerprint": "3f9c1e…"
 }
 ```
+
+`endLine` is optional. `fingerprint` is a SHA-256 hex digest of the file, line range, category and message, used to deduplicate findings.
 
 ---
 
@@ -245,7 +264,8 @@ ai-review/
 │   ├── cli.ts                 # CLI runtime entrypoint + orchestration
 │   ├── cliArgs.ts             # CLI argument parsing (parseCliArgs, CliArgsError)
 │   ├── reviewPipeline.ts      # Analyze + aggregate pipeline orchestration
-│   ├── router.ts              # File-to-agent routing via micromatch globs
+│   ├── router.ts              # File-to-agent routing via globs
+│   ├── globMatch.ts           # matchesGlobs — micromatch with `!` negations and dotfiles
 │   ├── routingTypes.ts        # Types: RoutingRuntimeConfig, AgentGlobsMap, etc.
 │   ├── runner.ts              # Parallel batch execution with retry
 │   ├── batcher.ts             # Build (file × agent) task batches
@@ -257,16 +277,20 @@ ai-review/
 │   ├── git.ts                 # git merge-base and changed-files helpers
 │   ├── defaultConfig.ts       # Default agent-to-glob routing config
 │   ├── repoConfig.ts          # Load + validate + merge per-repo ai-review.json
+│   ├── init.ts                # `ai-review init` — scaffolds an example ai-review.json
 │   ├── llmProvider.ts         # LlmProviderError class + error code types
 │   ├── llmClient.ts           # createLlmClient — runs claude / copilot / codex headless
 │   ├── llmAdapter.ts          # generateFindings — LlmClient.complete + response parsing
 │   ├── responseParser.ts      # parseModelResponse — extracts JSON findings from LLM text
 │   ├── installProviderConfig.ts  # Read/validate ~/.ai-review/.ai-review-install-provider.json
-│   ├── setupWizard.ts        # First-run interactive provider setup
+│   ├── setupWizard.ts         # First-run interactive provider setup
 │   └── findingSchema.ts       # Finding TypeScript interface
+├── test/                  # Vitest suite (not compiled into dist/)
 ├── dist/                  # compiled JS + d.ts (npm/CLI runtime)
 ├── schemas/
-│   └── finding.schema.json
+│   └── finding.schema.json  # documentation only — not used at runtime
+├── skill/
+│   └── SKILL.md           # Copilot skill, copied to ~/.copilot/skills/ai-review on install
 ├── scripts/
 │   └── postinstall.js     # Non-interactive: copies agents/skills to ~/.copilot/
 ├── package.json
@@ -281,34 +305,57 @@ ai-review/
 
 Agents are tuned for: **Java 17+, Spring Boot, Spock/Groovy tests, PostgreSQL, MongoDB, SQS/SNS, DDD, REST APIs**.
 
-To customize an agent's instructions, edit the corresponding file in `agents/` in the project directory or `~/.copilot/agents/` (copied there during install).
+Agent instructions are loaded from the first of these that has `<agent>.agent.md`:
+
+1. `agents/` in the root of the repository being reviewed
+2. `agents/` bundled with the installed package
+3. `~/.copilot/agents/`
+
+To customize a built-in agent for one repo, put your version at `agents/<agent>.agent.md` in that repo's root — it takes precedence over the bundled one. Since the package always ships its own `agents/`, editing `~/.copilot/agents/` has no effect on ai-review (that copy is for Copilot CLI's own use). To add a new reviewer, define a custom agent in `ai-review.json` (below).
 
 ---
 
 ## Per-repo config (`ai-review.json`)
 
-Create `ai-review.json` in your project root to extend the default routing for your repo's structure. Currently supports `routing.agentGlobs` — your globs are **appended** to the defaults for each agent (extend semantics, with dedup). Agents not listed are unchanged.
+Create `ai-review.json` in your repository root (it is only read from there) to adapt ai-review to the repo. `ai-review init` writes an example to the current directory (`--force` overwrites an existing one). Allowed top-level keys: `model`, `agents`, `exclude`, `excludeAgents`.
 
 ```json
 {
-  "routing": {
-    "agentGlobs": {
-      "ddd-reviewer": ["**/internal/core/**/*.java"],
-      "performance":  ["**/infra/cache/**/*.java"]
-    }
-  }
+  "model": "claude-haiku-4-5",
+  "agents": {
+    "ddd-reviewer": { "globs": ["**/internal/core/**/*.java"] },
+    "clean-coder":  { "globs": ["legacy/**/*.ts"], "replace": true },
+    "security":     { "globs": ["**/*.java"], "instructionsFile": "agents/security.agent.md" }
+  },
+  "exclude": ["**/*.generated.ts", "vendor/**"],
+  "excludeAgents": ["performance"]
 }
 ```
 
-**Allowed agent names:** `clean-coder`, `tester`, `architect`, `ddd-reviewer`, `performance`
+### Model
 
-Changed files that match **no** agent's globs (config files, `Dockerfile`, CI workflows, …) are not reviewed — agents focus on code. They are listed on stderr after the run so you can see what was skipped (and extend the globs if a file should be reviewed):
+`model` is a non-empty string passed to the agent CLI's `--model` for reviews of this repo. Only the model can be overridden per repo — the agent CLI itself always comes from the setup config.
+
+### Agents
+
+The `agents` object both tunes the built-in agents and adds new ones:
+
+- **Built-in agent** (`clean-coder`, `tester`, `architect`, `ddd-reviewer`, `performance`): `globs` (required) are **appended** to the default globs (with dedup); set `"replace": true` to use only your globs instead. `instructionsFile` is not allowed.
+- **Custom agent** (any other name matching `^[a-z0-9][a-z0-9-]*$`): `globs` and `instructionsFile` (a repo-relative path to its `.agent.md`) are both required; `replace` is not allowed. If a selected custom agent's instructions file cannot be read, the run fails with exit code 1.
+
+Every agent — built-in and custom — runs by default; use `--agents` / `--exclude-agents` / `excludeAgents` to narrow the selection.
+
+### Files no agent reviews
+
+Changed files that match **no** selected agent's globs (config files, `Dockerfile`, CI workflows, …) are not reviewed — agents focus on code. They are listed on stderr after the run so you can see what was skipped (and extend the globs if a file should be reviewed):
 
 ```
 Not reviewed (no agent's globs match) — 2 files:
   Dockerfile
   package.json
 ```
+
+Binary and lock files (images, fonts, `.jar`, `.class`, `.lock`) and files deleted on the branch are skipped before routing and are not listed (`--debug` shows them as warnings).
 
 ### Excluding files
 
@@ -353,7 +400,7 @@ The `--exclude-agents <list>` CLI flag (comma-separated agent names) adds to thi
 > - If `--agents` explicitly names an agent that is excluded in `ai-review.json`, the CLI errors out with a clear message.
 > - If no agents remain after filtering (e.g. all excluded), the CLI exits 1 with `Error: No agents selected.`
 
-Unknown keys or agent names cause a hard-fail with a clear error message. If the file is absent, defaults apply unchanged.
+Unknown keys or agent names cause a hard-fail with a clear error message — including the old `routing.agentGlobs` section, whose entries now go under `agents`. If the file is absent, defaults apply unchanged.
 
 ---
 

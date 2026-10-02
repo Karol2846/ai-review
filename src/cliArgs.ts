@@ -111,7 +111,7 @@ export function formatCliUsage(): string {
     "  --severity <min>         Minimum severity: critical, warning, info (default: info)",
     "  --exclude <list>         Comma-separated glob patterns to exclude from review",
     "  --json             Output raw JSON findings",
-    "  --debug            Show raw agent output and timings for debugging",
+    "  --debug            Print diagnostics (base branch, merge-base, scope, warnings) to stderr",
     "  --parallel <n>     Max parallel agent invocations (default: 5)",
     "  --force            Overwrite an existing ai-review.json (with init)",
     "  -h, --help         Show this help",
