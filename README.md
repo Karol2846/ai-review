@@ -174,6 +174,7 @@ init                    Scaffold an example ai-review.json in the current direct
 --report                Also print a terminal report (files are still annotated)
 --clean                 Remove previous [ai-review] TODO comments
 --json                  Print findings as a JSON array on stdout (no annotations)
+--explain-routing       Show which agents would review each changed file and why, then exit
 --parallel <n>          Max parallel agent invocations (default: 5)
 --debug                 Print diagnostics (base branch, merge-base, scope, warnings) to stderr
 --force                 Overwrite an existing ai-review.json (with init)
@@ -217,6 +218,15 @@ ai-review --debug --agents "architect"
 # Prints the resolved base branch, merge-base, review scope, changed-file count,
 # loaded ai-review.json overrides and pipeline warnings (failed batches,
 # skipped files, missing agent instructions) on stderr
+```
+
+### Check which agent reviews which file
+```bash
+ai-review --explain-routing
+# For each changed file: the agents that would review it and the glob that matched,
+# agents whose `!` glob removed it, or why nobody reviews it (no matching glob,
+# `exclude`, binary/lock file). Reads no file contents and calls no agent CLI —
+# handy while tuning ai-review.json. Combine with --agents / --exclude / --json.
 ```
 
 ### CI / scripting

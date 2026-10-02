@@ -28,6 +28,7 @@ import {
 import {createLlmClient, type LlmClient, PROVIDER_INFO} from "./llmClient";
 import {parseRepoConfig, mergeRoutingConfig, agentsToRoutingOverride, isCustomAgent, RepoConfigError, REPO_CONFIG_FILE_NAME} from "./repoConfig";
 import {renderReport} from "./reporter";
+import {buildRoutingExplanation, formatRoutingExplanation} from "./routingExplanation";
 import {runReviewPipeline, type RunReviewPipelineInput, type RunReviewPipelineResult} from "./reviewPipeline";
 import type {AgentInstructionsByAgent, RunnerRetryConfig} from "./runner";
 import type {AgentsMap, RoutingRuntimeConfig} from "./routingTypes";
@@ -503,6 +504,26 @@ export async function runCli(
 
     // Effective exclusions: union of repo-config `exclude` and `--exclude` globs (dedup).
     const effectiveExclude = [...new Set([...(configExclude ?? []), ...(options.exclude ?? [])])];
+
+    if (options.explainRouting && changedFiles.length > 0) {
+      printDebugWarnings(options.debug, debugWarnings, deps.writeStderr);
+      const explanation = buildRoutingExplanation(
+        changedFiles,
+        effectiveExclude,
+        filteredRoutingConfig.config
+      );
+      deps.writeStdout(
+        options.json
+          ? JSON.stringify(explanation)
+          : formatRoutingExplanation(
+              explanation,
+              toOriginRef(baseBranch),
+              filteredRoutingConfig.selectedAgents
+            )
+      );
+      return 0;
+    }
+
     if (effectiveExclude.length > 0) {
       changedFiles = excludeChangedFiles(changedFiles, effectiveExclude);
     }

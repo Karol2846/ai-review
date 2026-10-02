@@ -27,6 +27,8 @@ export interface CliOptions {
   readonly maxParallel: number;
   /** `true` when `--committed-only` is passed: review only commits, ignoring uncommitted and untracked changes. */
   readonly committedOnly: boolean;
+  /** `true` when `--explain-routing` is passed: print which agents would review each file, then exit. */
+  readonly explainRouting: boolean;
 }
 
 export class CliArgsError extends Error {
@@ -111,6 +113,7 @@ export function formatCliUsage(): string {
     "  --severity <min>         Minimum severity: critical, warning, info (default: info)",
     "  --exclude <list>         Comma-separated glob patterns to exclude from review",
     "  --json             Output raw JSON findings",
+    "  --explain-routing  Show which agents would review each changed file (and why), without reviewing",
     "  --debug            Print diagnostics (base branch, merge-base, scope, warnings) to stderr",
     "  --parallel <n>     Max parallel agent invocations (default: 5)",
     "  --force            Overwrite an existing ai-review.json (with init)",
@@ -160,6 +163,7 @@ export function parseCliArgs(argv: readonly string[]): CliOptions {
         debug: { type: "boolean" },
         force: { type: "boolean" },
         "committed-only": { type: "boolean" },
+        "explain-routing": { type: "boolean" },
         base: { type: "string" },
         agents: { type: "string" },
         "exclude-agents": { type: "string" },
@@ -207,6 +211,14 @@ export function parseCliArgs(argv: readonly string[]): CliOptions {
   if (agents !== undefined && excludeAgents !== undefined) {
     throw new CliArgsError("Use --agents or --exclude-agents, not both.");
   }
+  const explainRouting = readBooleanFlag(
+    (parsedValues as Record<string, unknown>)["explain-routing"]
+  );
+  const clean = readBooleanFlag(parsedValues.clean);
+  if (explainRouting && clean) {
+    throw new CliArgsError("Use --explain-routing or --clean, not both.");
+  }
+
   const minSeverity = parseSeverity(readOptionalStringValue(parsedValues.severity, "--severity"));
   const excludeValue = readOptionalStringValue(parsedValues.exclude, "--exclude");
   const exclude = excludeValue ? parseCsvList(excludeValue, "--exclude") : undefined;
@@ -218,7 +230,7 @@ export function parseCliArgs(argv: readonly string[]): CliOptions {
   return {
     annotate: true,
     report: readBooleanFlag(parsedValues.report),
-    clean: readBooleanFlag(parsedValues.clean),
+    clean,
     json: readBooleanFlag(parsedValues.json),
     debug: readBooleanFlag(parsedValues.debug),
     showHelp: readBooleanFlag(parsedValues.help),
@@ -231,5 +243,6 @@ export function parseCliArgs(argv: readonly string[]): CliOptions {
     ...(exclude !== undefined ? { exclude } : {}),
     maxParallel,
     committedOnly: readBooleanFlag((parsedValues as Record<string, unknown>)["committed-only"]),
+    explainRouting,
   };
 }

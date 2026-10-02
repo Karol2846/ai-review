@@ -41,3 +41,40 @@ export function matchesGlobs(filePath: string, patterns: readonly string[]): boo
   }
   return positive.length === 0 || micromatch.isMatch(path, positive, GLOB_MATCH_OPTIONS);
 }
+
+export interface GlobMatchExplanation {
+  /** First positive pattern that matched; absent when the list holds only negations. */
+  readonly matchedBy?: string;
+  /** First `!` pattern that removed the path, with its leading `!`; absent when none did. */
+  readonly excludedBy?: string;
+}
+
+/**
+ * Explains `matchesGlobs` for one path: `null` when no positive pattern matches (or the list is
+ * empty), otherwise the pattern that matched and, if the path was then removed, the negation that
+ * removed it. `matchesGlobs` is true exactly when this returns a result without `excludedBy`.
+ */
+export function explainGlobMatch(
+  filePath: string,
+  patterns: readonly string[]
+): GlobMatchExplanation | null {
+  if (patterns.length === 0) {
+    return null;
+  }
+
+  const path = normalizeGlobPath(filePath);
+  const positive = patterns.filter((pattern) => !isNegatedGlob(pattern));
+  const matchedBy = positive.find((pattern) => micromatch.isMatch(path, pattern, GLOB_MATCH_OPTIONS));
+  if (positive.length > 0 && matchedBy === undefined) {
+    return null;
+  }
+
+  const excludedBy = patterns
+    .filter(isNegatedGlob)
+    .find((pattern) => micromatch.isMatch(path, pattern.slice(1), GLOB_MATCH_OPTIONS));
+
+  return {
+    ...(matchedBy !== undefined ? { matchedBy } : {}),
+    ...(excludedBy !== undefined ? { excludedBy } : {}),
+  };
+}

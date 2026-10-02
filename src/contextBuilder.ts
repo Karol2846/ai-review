@@ -44,7 +44,8 @@ function toDeterministicFileList(files: readonly string[]): string[] {
   return [...new Set(files)].sort();
 }
 
-function isUnsupportedFile(filePath: string): boolean {
+/** Binary and lock files that the review skips before routing. */
+export function isUnsupportedFile(filePath: string): boolean {
   return UNSUPPORTED_EXTENSIONS.has(extname(filePath).toLowerCase());
 }
 
