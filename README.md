@@ -324,7 +324,7 @@ The `--exclude` CLI flag (comma-separated globs) adds to this list: the effectiv
 
 ### Glob patterns
 
-Agent `globs` and `exclude` use [micromatch](https://github.com/micromatch/micromatch) syntax, matched against repo-relative paths. A pattern prefixed with `!` **removes** files the other patterns in the list would match — negations win regardless of their position:
+Agent `globs` and `exclude` use [micromatch](https://github.com/micromatch/micromatch) syntax, matched against repo-relative paths; `*` and `**` also match dotfiles and dot-directories, so `**/*.yml` covers `.github/workflows/ci.yml`. A pattern prefixed with `!` **removes** files the other patterns in the list would match — negations win regardless of their position:
 
 ```json
 {

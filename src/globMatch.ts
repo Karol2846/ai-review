@@ -1,5 +1,11 @@
 import micromatch from "micromatch";
 
+/**
+ * `dot: true` lets `*` and `**` match dot-segments, so `.github/**` or `src/.config/x.ts` are
+ * matched like any other path (micromatch skips them by default).
+ */
+const GLOB_MATCH_OPTIONS = { dot: true } as const;
+
 /** Normalizes a repo-relative path to forward slashes so globs match the same way on Windows. */
 export function normalizeGlobPath(filePath: string): string {
   return filePath.replace(/\\/gu, "/");
@@ -30,8 +36,8 @@ export function matchesGlobs(filePath: string, patterns: readonly string[]): boo
   const positive = patterns.filter((pattern) => !isNegatedGlob(pattern));
   const negated = patterns.filter(isNegatedGlob).map((pattern) => pattern.slice(1));
 
-  if (negated.length > 0 && micromatch.isMatch(path, negated)) {
+  if (negated.length > 0 && micromatch.isMatch(path, negated, GLOB_MATCH_OPTIONS)) {
     return false;
   }
-  return positive.length === 0 || micromatch.isMatch(path, positive);
+  return positive.length === 0 || micromatch.isMatch(path, positive, GLOB_MATCH_OPTIONS);
 }
