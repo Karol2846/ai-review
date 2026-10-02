@@ -14,7 +14,7 @@ import {
 } from "./contextBuilder";
 import type { Finding } from "./findingSchema";
 import type { ReviewScope } from "./git";
-import { routeFilesToAgents } from "./router";
+import { findUnroutedFiles, routeFilesToAgents } from "./router";
 import type { AgentName, RoutingRuntimeConfig } from "./routingTypes";
 import {
   runAgentBatches,
@@ -81,6 +81,8 @@ export interface RunReviewPipelineResult {
   readonly warnings: readonly ReviewPipelineWarning[];
   readonly metadata: ReviewPipelineMetadata;
   readonly routedFilesByAgent: ReadonlyMap<AgentName, readonly string[]>;
+  /** Reviewable changed files that matched no selected agent's globs, sorted. */
+  readonly unroutedFiles: readonly string[];
   readonly batches: readonly AgentBatch[];
   readonly parsedBatches: readonly ParsedBatchFindings[];
 }
@@ -205,6 +207,7 @@ export async function runReviewPipeline(
       aggregation: aggregationResult.metadata,
     },
     routedFilesByAgent,
+    unroutedFiles: findUnroutedFiles(contextFilePaths, routedFilesByAgent),
     batches: batchesResult.batches,
     parsedBatches,
   };

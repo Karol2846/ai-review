@@ -137,6 +137,11 @@ describe("runReviewPipeline (smoke)", () => {
           fullContent: "it('works', () => expect(service('x')).toBe('x'));\n",
           gitDiff: "@@ -0,0 +1 @@\n+it('works', () => expect(service('x')).toBe('x'));\n",
         },
+        {
+          filePath: "Dockerfile",
+          fullContent: "FROM node:22\n",
+          gitDiff: "@@ -0,0 +1 @@\n+FROM node:22\n",
+        },
       ],
       warnings: [
         {
@@ -203,6 +208,7 @@ describe("runReviewPipeline (smoke)", () => {
     expect(result.findings[0]?.fingerprint).toMatch(/^[a-f0-9]{64}$/u);
     expect(result.metadata.failedBatchCount).toBe(0);
     expect(result.metadata.batchCount).toBe(2);
+    expect(result.unroutedFiles).toEqual(["Dockerfile"]);
     expect(result.metadata.contextWarningCount).toBe(1);
     expect(result.warnings).toEqual([
       expect.objectContaining({

@@ -260,6 +260,18 @@ function printDebugWarnings(
   }
 }
 
+function printUnroutedFiles(files: readonly string[], writeStderr: (message: string) => void): void {
+  if (files.length === 0) {
+    return;
+  }
+
+  const noun = files.length === 1 ? "file" : "files";
+  writeStderr(`Not reviewed (no agent's globs match) — ${files.length} ${noun}:`);
+  for (const file of files) {
+    writeStderr(`  ${file}`);
+  }
+}
+
 function writeDebug(debug: boolean, message: string, writeStderr: (m: string) => void): void {
   if (debug) writeStderr(`DEBUG: ${message}`);
 }
@@ -582,6 +594,7 @@ export async function runCli(
     }
 
     printDebugWarnings(options.debug, debugWarnings, deps.writeStderr);
+    printUnroutedFiles(reviewResult.unroutedFiles, deps.writeStderr);
 
     if (options.json) {
       deps.writeStdout(JSON.stringify(reviewResult.findings));
