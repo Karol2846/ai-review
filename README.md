@@ -117,6 +117,8 @@ ai-review
 
 All agents are critical and pragmatic — they name exact classes and methods, and return `[]` only when code is genuinely clean.
 
+Test files (`test/`, `__tests__/`, `src/test/`, `*.test.ts`, `*_test.go`, `test_*.py`, …) go to **tester only**; the other agents' default globs exclude them. `architect` gets service-boundary code (controllers, services, messaging, clients, exception handlers, configuration), not all production code.
+
 ---
 
 ## Output
@@ -340,7 +342,7 @@ Create `ai-review.json` in your repository root (it is only read from there) to 
 
 The `agents` object both tunes the built-in agents and adds new ones:
 
-- **Built-in agent** (`clean-coder`, `tester`, `architect`, `ddd-reviewer`, `performance`): `globs` (required) are **appended** to the default globs (with dedup); set `"replace": true` to use only your globs instead. `instructionsFile` is not allowed.
+- **Built-in agent** (`clean-coder`, `tester`, `architect`, `ddd-reviewer`, `performance`): `globs` (required) are **appended** to the default globs (with dedup); set `"replace": true` to use only your globs instead. `instructionsFile` is not allowed. The defaults of every agent except `tester` exclude test files with `!` globs, and negations win over appended globs — to have such an agent review tests, use `"replace": true`.
 - **Custom agent** (any other name matching `^[a-z0-9][a-z0-9-]*$`): `globs` and `instructionsFile` (a repo-relative path to its `.agent.md`) are both required; `replace` is not allowed. If a selected custom agent's instructions file cannot be read, the run fails with exit code 1.
 
 Every agent — built-in and custom — runs by default; use `--agents` / `--exclude-agents` / `excludeAgents` to narrow the selection.
